@@ -1,0 +1,176 @@
+@import "tailwindcss";
+
+/* dark: вариант срабатывает только при наличии класса .dark на html.
+   Системная тема ОС не влияет — управляем темой вручную через localStorage. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Manrope", "Inter", sans-serif;
+  /* Светлая тема: акцент как на нижней навигации (иконки/текст активной вкладки) */
+  --color-primary: #248bcf;
+  --color-primary-dark: #1d6eb8;
+  --color-primary-light: #e3f2fa;
+  --color-secondary: #9AB0C5;
+  /* Единый тёмный холст и панели (совпадает с html.dark в @layer base) */
+  --color-app-canvas: #0f172a;
+  --color-app-nav: #1e293b;
+  /* Подложка страницы: слегка приглушённый светлый фон (slate-50), карточки — белые поверх */
+  --color-surface: #f8fafc;
+  --color-error: #BA1A1A;
+  --color-tooth-healthy: #FFFFFF;
+  --color-tooth-treated: #3B82F6;
+  --color-tooth-caries: #EF4444;
+  --color-tooth-removed: #9CA3AF;
+  --color-tooth-crown: #F59E0B;
+  --color-tooth-implant: #8B5CF6;
+  --radius-card: 12px;
+  --radius-card-lg: 16px;
+}
+
+@layer base {
+  html {
+    font-family: "Manrope", "Inter", sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
+    color-scheme: light;
+    background-color: #f8fafc;
+    --chart-tooltip-bg: #ffffff;
+    --chart-tooltip-border: #e2e8f0;
+    --chart-tooltip-label: #0f172a;
+    --chart-tooltip-value: #248bcf;
+    --chart-tooltip-shadow: 0 4px 14px rgba(15, 23, 42, 0.1);
+    --chart-tooltip-cursor: rgba(36, 139, 207, 0.08);
+  }
+
+  button,
+  a,
+  [role="button"],
+  [role="tab"],
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+
+  html.dark {
+    color-scheme: dark;
+    background-color: var(--color-app-canvas);
+    /* Спокойный акцент без «неона»: приглушённый синий */
+    --color-primary: #6d93bd;
+    --color-primary-dark: #587fa5;
+    --color-primary-light: #171f2f;
+    --chart-tooltip-bg: #1e293b;
+    --chart-tooltip-border: #334155;
+    --chart-tooltip-label: #f1f5f9;
+    --chart-tooltip-value: #94c4ee;
+    --chart-tooltip-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+    --chart-tooltip-cursor: rgba(109, 147, 189, 0.12);
+  }
+
+  body {
+    @apply bg-surface text-[#0F172A] antialiased;
+    max-width: 390px;
+    margin: 0 auto;
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  html.dark body {
+    background-color: var(--color-app-canvas);
+    color: #e2e8f0;
+  }
+
+  /* Плавные переходы только в момент явного переключения темы — без постоянного оверхеда на каждый DOM-узел */
+  html.theme-transitioning body,
+  html.theme-transitioning *,
+  html.theme-transitioning *::before,
+  html.theme-transitioning *::after {
+    transition:
+      background-color 0.25s ease,
+      color 0.25s ease,
+      border-color 0.25s ease,
+      box-shadow 0.25s ease,
+      fill 0.25s ease,
+      stroke 0.25s ease !important;
+  }
+}
+
+@layer utilities {
+  /* Отступ под плавающий tabbar: pill + зазор 12px + safe-area (см. BottomBar pt-3) */
+  .pb-safe {
+    padding-bottom: calc(4.75rem + 0.75rem + max(1.5rem, env(safe-area-inset-bottom, 0px)));
+  }
+
+  /* Экраны без tabbar: небольшой зазор от нижнего края + safe-area */
+  .pb-page-end {
+    padding-bottom: calc(0.75rem + max(1.5rem, env(safe-area-inset-bottom, 0px)));
+  }
+  .screen-padding {
+    @apply px-6 pt-4;
+  }
+
+  /* Тактильный отклик для Telegram Mini App */
+  .interactive-press {
+    @apply transition-transform duration-100 ease-out active:scale-[0.97];
+  }
+  .interactive-press-sm {
+    @apply transition-transform duration-100 ease-out active:scale-95;
+  }
+
+  /* Объёмная панель: белая карточка на светлой подложке */
+  .elevated-panel {
+    @apply bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/8 shadow-[0_4px_16px_rgba(15,23,42,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.22)];
+  }
+
+  /**
+   * Outline-кнопки / инпуты на белой карточке — контраст с фоном (клиент, врач, админка).
+   * Тёмная тема: через html.dark (см. @custom-variant dark).
+   */
+  .shadow-raised-surface {
+    box-shadow:
+      0 0 0 1px rgb(15 23 42 / 0.04),
+      0 2px 10px rgb(15 23 42 / 0.12),
+      0 1px 3px rgb(15 23 42 / 0.08);
+  }
+
+  html.dark .shadow-raised-surface {
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 0.04),
+      0 2px 10px rgb(0 0 0 / 0.28);
+  }
+
+  /* Recharts: fallback если inline-стили перебивают contentStyle */
+  html.dark .recharts-default-tooltip {
+    background-color: var(--chart-tooltip-bg) !important;
+    border-color: var(--chart-tooltip-border) !important;
+    border-radius: 10px !important;
+    box-shadow: var(--chart-tooltip-shadow) !important;
+  }
+
+  html.dark .recharts-tooltip-label {
+    color: var(--chart-tooltip-label) !important;
+  }
+
+  html.dark .recharts-tooltip-item {
+    color: var(--chart-tooltip-value) !important;
+  }
+
+  /* Мягкая подсветка без синего свечения */
+  .dark .glow-primary {
+    box-shadow:
+      0 0 0 1px rgb(148 163 184 / 0.18),
+      0 4px 14px rgb(0 0 0 / 0.32);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -1,0 +1,24 @@
+# Dependencies & Build
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# Environment variables & Secrets (never commit real keys!)
+.env
+.env.local
+.env*.local
+
+# Local isolation & non-Git files
+_not_for_git/
+public/assets/aistudio/
+
+# AI Studio & IDE local config
+.aistudio/
+.cursor/
+.cursorrules
+
+# OS artifacts
+.DS_Store
+Thumbs.db
