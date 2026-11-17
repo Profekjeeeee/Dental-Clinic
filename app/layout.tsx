@@ -1,6 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { Manrope, Inter } from "next/font/google";
+import "@fontsource/manrope/400.css";
+import "@fontsource/manrope/500.css";
+import "@fontsource/manrope/600.css";
+import "@fontsource/manrope/700.css";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/600.css";
 import "./globals.css";
 import "./responsive.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -9,20 +14,6 @@ import PatientAppGate from "@/components/auth/PatientAppGate";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ClinicProvider } from "@/contexts/ClinicProvider";
 import ClinicBrandingStyles from "@/components/ClinicBrandingStyles";
-
-const manrope = Manrope({
-  subsets: ["latin", "cyrillic"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-manrope",
-  display: "swap",
-});
-
-const inter = Inter({
-  subsets: ["latin", "cyrillic"],
-  weight: ["400", "600"],
-  variable: "--font-inter",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "Стоматологическая клиника",
@@ -59,7 +50,7 @@ const telegramThemeBootstrapScript =
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ru" className={`${manrope.variable} ${inter.variable}`} suppressHydrationWarning>
+    <html lang="ru" suppressHydrationWarning>
       <head>
         {/* Анти-FOUC: применяем сохранённую тему до рендера */}
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />

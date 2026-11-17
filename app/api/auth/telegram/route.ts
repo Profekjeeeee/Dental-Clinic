@@ -4,7 +4,7 @@ import { ensureProfileRowExists, profileHasPinHash } from "@/lib/server/authProf
 import { clientRowToPayload, type AuthSessionPayload } from "@/lib/server/authSessionPayload";
 import { ensureShadowAuthForRow } from "@/lib/server/ensureShadowAuth";
 import { issueSupabaseSessionForUserId } from "@/lib/server/issueSupabaseSession";
-import { verifyDentalGateRequest } from "@/lib/server/dentalGateVerify";
+import { DentalGateError, verifyDentalGateRequest } from "@/lib/server/dentalGateVerify";
 import { getSupabaseAnonServer } from "@/lib/server/supabaseAnon";
 import { isSupabaseConfigured } from "@/lib/supabase/publicConfig";
 
@@ -26,7 +26,10 @@ export async function POST(req: Request) {
   let gate;
   try {
     gate = verifyDentalGateRequest(initData);
-  } catch {
+  } catch (e) {
+    if (e instanceof DentalGateError) {
+      return NextResponse.json({ ok: false, error: e.message }, { status: e.status });
+    }
     return NextResponse.json({ ok: false, error: "Недействительные данные Telegram." }, { status: 401 });
   }
 

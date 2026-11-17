@@ -17,7 +17,7 @@ export type DentalGateVerified =
 
 /** Проверенный контекст TMA или дев-байпас локальной разработки. */
 export function verifyDentalGateRequest(telegramInitData: string | undefined): DentalGateVerified {
-  const bot = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  const bot = process.env.TELEGRAM_BOT_TOKEN?.trim().replace(/^["']|["']$/g, "");
   const raw = telegramInitData?.trim() ?? "";
   const dev =
     process.env.NODE_ENV !== "production" && process.env.DENTAL_GATE_DEV_ALLOW?.trim() === "1";

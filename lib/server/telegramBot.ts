@@ -5,7 +5,7 @@ export type TgInlineKeyboard = {
 };
 
 function getBotToken(): string {
-  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim().replace(/^["']|["']$/g, "");
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN is not configured");
   return token;
 }

@@ -10,6 +10,8 @@
     "demo:docs": "echo See docs/DEMO_STAND.md — run seed_demo_commercial.sql in Supabase SQL Editor"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/manrope": "^5.3.0",
     "@supabase/supabase-js": "^2.105.4",
     "class-variance-authority": "^0.7.1",
     "lucide-react": "^1.16.0",

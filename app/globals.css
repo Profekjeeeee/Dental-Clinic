@@ -29,6 +29,8 @@
 
 @layer base {
   html {
+    --font-manrope: "Manrope", sans-serif;
+    --font-inter: "Inter", sans-serif;
     font-family: "Manrope", "Inter", sans-serif;
     -webkit-tap-highlight-color: transparent;
     -webkit-text-size-adjust: 100%;
