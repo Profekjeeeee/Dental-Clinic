@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import ThemeToggleButton from "@/components/ui/ThemeToggleButton";
@@ -53,7 +53,7 @@ function pctChange(current: number, prev: number): string {
 }
 
 export default function AdminFinancePage() {
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>("bills");
   const [stats, setStats] = useState<FinanceStats | null>(null);
   const [chart, setChart] = useState<{ day: string; label: string; revenue: number; payments: number }[]>([]);
   const [bills, setBills] = useState<AdminBillRow[]>([]);
@@ -63,25 +63,42 @@ export default function AdminFinancePage() {
   const [error, setError] = useState("");
   const [manualBillId, setManualBillId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const [statsRes, chartRes, billsRes, paymentsRes] = await Promise.all([
-      fetchFinanceStats(),
-      fetchFinanceChart(),
-      fetchAdminBills(billFilter === "all" ? undefined : billFilter),
-      fetchAdminPayments(),
-    ]);
-    setStats(statsRes.stats);
-    setChart(chartRes.chart);
-    setBills(billsRes.data);
-    setPayments(paymentsRes.data);
-    setError(statsRes.error ?? chartRes.error ?? billsRes.error ?? paymentsRes.error ?? "");
-    setLoading(false);
-  }, [billFilter]);
+  const [revision, setRevision] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const statusFilter = tab === "bills" ? billFilter : null;
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let active = true;
+    setLoading(true);
+    setError("");
+    async function loadTab() {
+      try {
+        if (tab === "bills") {
+          const result = await fetchAdminBills(statusFilter ?? undefined);
+          if (!active) return;
+          setBills(result.data);
+          setError(result.error ?? "");
+        } else if (tab === "payments") {
+          const result = await fetchAdminPayments();
+          if (!active) return;
+          setPayments(result.data);
+          setError(result.error ?? "");
+        } else {
+          const [statsResult, chartResult] = await Promise.all([fetchFinanceStats(), fetchFinanceChart()]);
+          if (!active) return;
+          setStats(statsResult.stats);
+          setChart(chartResult.chart);
+          setError(statsResult.error ?? chartResult.error ?? "");
+        }
+      } catch {
+        if (active) setError("Не удалось загрузить данные");
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    void loadTab();
+    return () => { active = false; };
+  }, [tab, statusFilter, revision]);
 
   const statCards = useMemo(() => {
     if (!stats) return [];
@@ -109,16 +126,31 @@ export default function AdminFinancePage() {
     ];
   }, [stats]);
 
-  const handleExport = () => {
-    const csv = exportFinanceCsv(bills, payments);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `finance-${new Date().toISOString().split("T")[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    tgHapticSuccess();
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const [billResult, paymentResult] = await Promise.all([
+        fetchAdminBills(billFilter), fetchAdminPayments(),
+      ]);
+      const exportError = billResult.error ?? paymentResult.error;
+      if (exportError) {
+        setError(exportError);
+        return;
+      }
+      const csv = exportFinanceCsv(billResult.data, paymentResult.data);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `finance-${new Date().toISOString().split("T")[0]}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      tgHapticSuccess();
+    } catch {
+      setError("Не удалось выгрузить CSV");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleManualPay = async (bill: AdminBillRow) => {
@@ -129,7 +161,7 @@ export default function AdminFinancePage() {
     setManualBillId(null);
     if (result) {
       tgHapticSuccess();
-      void load();
+      setRevision((value) => value + 1);
     }
   };
 
@@ -146,10 +178,11 @@ export default function AdminFinancePage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={handleExport}
+              disabled={exporting}
+              onClick={() => void handleExport()}
               className="interactive-press-sm rounded-xl border border-primary/30 bg-primary-light px-3 py-2 text-[12px] font-semibold text-primary"
             >
-              CSV
+              {exporting ? "Выгружаем…" : "CSV"}
             </button>
             <ThemeToggleButton sizeClass="w-9 h-9" />
           </div>
@@ -166,7 +199,7 @@ export default function AdminFinancePage() {
             <button
               key={id}
               type="button"
-              onClick={() => setTab(id)}
+              onClick={() => { if (id !== tab) { setLoading(true); setTab(id); } }}
               className={`interactive-press-sm shrink-0 rounded-full px-4 py-2 text-[13px] font-semibold ${
                 tab === id
                   ? "bg-primary text-white"
@@ -244,7 +277,7 @@ export default function AdminFinancePage() {
               <button
                 key={id}
                 type="button"
-                onClick={() => setBillFilter(id)}
+                onClick={() => { if (id !== billFilter) { setLoading(true); setBillFilter(id); } }}
                 className={`interactive-press-sm shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium ${
                   billFilter === id
                     ? "bg-primary text-white"
@@ -354,7 +387,7 @@ export default function AdminFinancePage() {
           href="/screens/admin/dashboard"
           className="text-[13px] font-medium text-primary"
         >
-          ← Дашборд
+          ← Сегодня
         </Link>
       </div>
     </main>

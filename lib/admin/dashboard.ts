@@ -60,16 +60,11 @@ function displayPatient(row: AppointmentDbRow): string {
   return "Пациент";
 }
 
-function scheduleUiStatus(status: string, dateIso: string, time: string): string {
-  const { today } = monthBounds();
+function scheduleUiStatus(status: string): string {
   if (status === "completed" || status === "done") return "done";
-  if (dateIso === today) {
-    const now = new Date();
-    const [hh, mm] = time.split(":").map((x) => parseInt(x, 10));
-    const slot = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh || 0, mm || 0);
-    const diff = slot.getTime() - now.getTime();
-    if (diff >= -30 * 60 * 1000 && diff <= 60 * 60 * 1000) return "current";
-  }
+  if (status === "cancelled") return "cancelled";
+  if (status === "rescheduled") return "rescheduled";
+  if (status === "pending") return "pending";
   return "upcoming";
 }
 
@@ -95,10 +90,18 @@ export async function fetchDashboardStats(): Promise<{
   const COLS_LEGACY =
     "id, created_at, appointment_date, appointment_time, status, doctor_name, patient_name, service_id, services(name, price)";
 
-  let [apptRes, doctorsRes] = await Promise.all([
+  const [initialAppointments, doctorsRes, paymentsRes, billsRes] = await Promise.all([
     selectAppointments(COLS_FULL),
     supabase.from("doctors").select("id, is_active"),
+    supabase
+      .from("payments")
+      .select("amount, completed_at")
+      .eq("status", "succeeded")
+      .gte("completed_at", `${start}T00:00:00`)
+      .lte("completed_at", `${end}T23:59:59`),
+    supabase.from("bills").select("amount, paid_amount, status"),
   ]);
+  let apptRes = initialAppointments;
 
   // Колонка service появляется в миграции 013 — если её ещё нет, повторяем без неё.
   if (
@@ -152,15 +155,6 @@ export async function fetchDashboardStats(): Promise<{
     byDay.set(dayKey, bucket);
   }
 
-  const [paymentsRes, billsRes] = await Promise.all([
-    supabase
-      .from("payments")
-      .select("amount, completed_at")
-      .eq("status", "succeeded")
-      .gte("completed_at", `${start}T00:00:00`)
-      .lte("completed_at", `${end}T23:59:59`),
-    supabase.from("bills").select("amount, paid_amount, status"),
-  ]);
 
   let revenueMonth = 0;
   let paymentsMonth = 0;
@@ -207,7 +201,7 @@ export async function fetchDashboardStats(): Promise<{
         patient: displayPatient(r),
         doctor: r.doctor_name?.trim() || "Врач",
         procedure: service?.name?.trim() || r.service?.trim() || "Приём",
-        status: scheduleUiStatus(r.status, r.appointment_date, r.appointment_time),
+        status: scheduleUiStatus(r.status),
       };
     });
 
