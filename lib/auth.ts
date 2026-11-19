@@ -144,9 +144,12 @@ export function resolveDentalClientFromCacheSync(key: string): DentalClientRecor
   const cache = getDentalClients();
   const byId = cache.find((c) => c.id === trimmed);
   if (byId) return byId;
-  const digits = normalizePhone(trimmed.replace(/\D/g, ""));
-  if (digits.length >= 10 && digits.length <= 15) {
-    return cache.find((c) => normalizePhone(c.phone) === digits) ?? null;
+  // UUID содержит цифры, но никогда не является номером телефона.
+  if (isDentalClientUuidKey(trimmed)) return null;
+  const phoneDigits = trimmed.replace(/\D/g, "");
+  if (/^[+\d\s().-]+$/.test(trimmed) && phoneDigits.length >= 10 && phoneDigits.length <= 15) {
+    const phone = normalizePhone(trimmed);
+    return cache.find((c) => normalizePhone(c.phone) === phone) ?? null;
   }
   return null;
 }
@@ -173,23 +176,19 @@ export async function resolveDentalClientByPatientKey(key: string): Promise<Dent
   const cached = resolveDentalClientFromCacheSync(trimmed);
   if (cached) return cached;
 
-  const digits = normalizePhone(trimmed.replace(/\D/g, ""));
-  if (digits.length >= 10 && digits.length <= 15) {
+  if (isDentalClientUuidKey(trimmed)) {
+    // Карта врача загружается через API; повторный поиск должен использовать тот же путь,
+    // даже когда общий кэш ещё не готов или прямой запрос ограничен RLS.
+    const { client } = await fetchDentalClientById(trimmed);
+    return client;
+  }
+
+  const phoneDigits = trimmed.replace(/\D/g, "");
+  if (/^[+\d\s().-]+$/.test(trimmed) && phoneDigits.length >= 10 && phoneDigits.length <= 15) {
     return findClientByPhone(trimmed);
   }
 
-  /** Только UUID-ключ: иначе `.eq('id', телефон/текст)` даёт invalid input syntax for type uuid при типе id = uuid. */
-  if (!isDentalClientUuidKey(trimmed)) {
-    return null;
-  }
-
-  const { data, error } = await supabase
-    .from("dental_clients")
-    .select("*")
-    .eq("id", trimmed)
-    .maybeSingle();
-  if (error || !data) return null;
-  return mapClientRow(data as Parameters<typeof mapClientRow>[0]);
+  return null;
 }
 
 async function supabaseSelectEmployeeByPhone(cleanPhone: string) {
