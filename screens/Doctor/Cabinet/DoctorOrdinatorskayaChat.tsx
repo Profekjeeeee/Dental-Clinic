@@ -1,5 +1,7 @@
 "use client";
 
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
+
 import {
   useCallback,
   useEffect,
@@ -52,6 +54,7 @@ export default function DoctorOrdinatorskayaChat({
   session: DentalSession | null;
   showToast: (message: string, tone?: ToastTone) => void;
 }) {
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [surface, setSurface] = useState<ChatSurface>({ kind: "general" });
   const [generalRoomId, setGeneralRoomId] = useState<string | null>(null);
@@ -247,7 +250,7 @@ export default function DoctorOrdinatorskayaChat({
 
   const handleDeleteMessage = useCallback(
     async (m: DoctorOrdinatorskayaMessage) => {
-      if (!confirm("Удалить сообщение?")) return;
+      if (!await confirm({ title: "Удалить сообщение?", message: "Сообщение будет удалено.", confirmLabel: "Удалить", destructive: true })) return;
       setSending(true);
       try {
         const { error } = await deleteDoctorRoomMessage(m.id);
@@ -265,7 +268,7 @@ export default function DoctorOrdinatorskayaChat({
         setSending(false);
       }
     },
-    [editingMessage, showToast],
+    [editingMessage, showToast, confirm],
   );
 
   const headerTitle =
@@ -572,6 +575,7 @@ export default function DoctorOrdinatorskayaChat({
         />
       ) : null}
 
+      {confirmDialog}
       <ConsiliumFormulaPreview
         open={consiliumPreview != null}
         onClose={() => setConsiliumPreview(null)}

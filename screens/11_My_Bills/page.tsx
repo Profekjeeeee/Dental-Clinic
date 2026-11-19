@@ -56,7 +56,7 @@ export default function BillsPage() {
   const [activeTab, setActiveTab] = useState<BillsTab>("pending");
   const [payingId, setPayingId] = useState<string | null>(null);
   const [payingAll, setPayingAll] = useState(false);
-  const { toastMessage, toastVisible, toastTone, showToast } = useToast();
+  const { toastMessage, toastVisible, toastTone, showToast, dismissToast } = useToast();
 
   useLayoutEffect(() => {
     if (hasBillsCache()) {
@@ -364,6 +364,7 @@ export default function BillsPage() {
 
       <BottomBar />
       <Toast
+        onClose={dismissToast}
         message={toastMessage}
         visible={toastVisible}
         tone={toastTone}

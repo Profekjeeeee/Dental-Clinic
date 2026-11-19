@@ -103,7 +103,7 @@ export default function PatientMedicalSheet({
   onClose,
   contextAppointment = null,
 }: PatientMedicalSheetProps) {
-  const { toastMessage, toastVisible, toastTone, showToast } = useToast();
+  const { toastMessage, toastVisible, toastTone, showToast, dismissToast } = useToast();
   const [formulaTeeth, setFormulaTeeth] = useState<ToothStatus[]>([]);
   const [sheetTooth, setSheetTooth] = useState<number | null>(null);
 
@@ -1382,11 +1382,11 @@ export default function PatientMedicalSheet({
       )}
 
       <Toast
+        onClose={dismissToast}
         variant="staffPlain"
         message={toastMessage}
         visible={toastVisible}
         tone={toastTone}
-        className="z-[125]"
       />
     </div>
   );

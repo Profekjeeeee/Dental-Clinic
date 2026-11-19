@@ -43,6 +43,7 @@ export const AUDIT_TABLE_LABELS: Record<string, string> = {
   patient_files: "Файл",
   treatment_plan_items: "План лечения",
   dental_clients: "Карта пациента",
+  error_reports: "Отчёт об ошибке",
 };
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {

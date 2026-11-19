@@ -1,5 +1,7 @@
 "use client";
 
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
+
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import BottomBar from "@/components/layout/BottomBar";
@@ -52,7 +54,8 @@ export default function PatientSupportChatPage() {
   const [menuMessage, setMenuMessage] = useState<ChatMessage | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const { toastMessage, toastVisible, toastTone, showToast } = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog("patientWithTabBar");
+  const { toastMessage, toastVisible, toastTone, showToast, dismissToast } = useToast();
 
   useEffect(() => {
     void (async () => {
@@ -142,7 +145,7 @@ export default function PatientSupportChatPage() {
 
   const handleDeleteMessage = async (m: ChatMessage) => {
     if (!uid) return;
-    if (!confirm("Удалить сообщение?")) return;
+    if (!await confirm({ title: "Удалить сообщение?", message: "Сообщение будет удалено.", confirmLabel: "Удалить", destructive: true })) return;
     setSending(true);
     try {
       await deleteChatMessage(m.id);
@@ -372,7 +375,9 @@ export default function PatientSupportChatPage() {
       ) : null}
 
       <BottomBar />
+      {confirmDialog}
       <Toast
+        onClose={dismissToast}
         message={toastMessage}
         visible={toastVisible}
         tone={toastTone}

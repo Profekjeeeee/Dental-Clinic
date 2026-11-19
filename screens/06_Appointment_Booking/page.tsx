@@ -547,7 +547,7 @@ function BookingContent() {
     subtitle: string;
   } | null>(null);
   const [successModalEntered, setSuccessModalEntered] = useState(false);
-  const { toastMessage, toastVisible, toastTone, showToast } = useToast();
+  const { toastMessage, toastVisible, toastTone, showToast, dismissToast } = useToast();
 
   const clientClock = useClientNow();
   const clinicTimeSlots = useClinicTimeSlots();
@@ -1342,7 +1342,7 @@ function BookingContent() {
             }}
           />
           <div
-            className={`relative z-10 w-full max-w-[390px] rounded-t-[1.75rem] rounded-b-2xl bg-white p-8 pb-7 text-center shadow-[0_-8px_40px_-8px_rgba(15,23,42,0.2)] transition-all duration-300 ease-out ${
+            className={`relative z-10 w-full max-w-[390px] rounded-t-[1.75rem] rounded-b-2xl bg-white dark:bg-slate-800 p-8 pb-7 text-center shadow-[0_-8px_40px_-8px_rgba(15,23,42,0.2)] transition-all duration-300 ease-out ${
               successModalEntered
                 ? "translate-y-0 opacity-100"
                 : "translate-y-full opacity-0"
@@ -1353,7 +1353,7 @@ function BookingContent() {
               aria-hidden
             >
               <svg
-                className="h-9 w-9 text-[#2d6a5d]"
+                className="h-9 w-9 text-emerald-700 dark:text-emerald-300"
                 viewBox="0 0 24 24"
                 fill="none"
               >
@@ -1368,7 +1368,7 @@ function BookingContent() {
             </div>
             <h2
               id="booking-success-title"
-              className="text-xl font-bold leading-snug text-[#1e293b]"
+              className="text-xl font-bold leading-snug text-[#1e293b] dark:text-white"
             >
               {successModal.kind === "reschedule"
                 ? "Запись перенесена!"
@@ -1376,13 +1376,13 @@ function BookingContent() {
             </h2>
             <p
               id="booking-success-desc"
-              className="mt-2 text-base font-normal text-[#64748b]"
+              className="mt-2 text-base font-normal text-slate-600 dark:text-slate-300"
             >
               {successModal.subtitle}
             </p>
             <button
               type="button"
-              className="mt-8 w-full rounded-xl bg-primary py-3.5 text-[15px] font-semibold text-white shadow-[0_4px_14px_rgba(36,139,207,0.35)] dark:shadow-none border border-primary-dark/25 transition-all duration-150 ease-out active:scale-[0.98] active:bg-primary-dark"
+              className="mt-8 w-full rounded-xl bg-[#1d6eb8] py-3.5 text-[15px] font-semibold text-white shadow-[0_4px_14px_rgba(36,139,207,0.35)] dark:shadow-none border border-primary-dark/25 transition-all duration-150 ease-out active:scale-[0.98] active:bg-primary-dark"
               onClick={() => {
                 setSuccessModal(null);
                 router.push(ROUTES.clientHome);
@@ -1395,6 +1395,7 @@ function BookingContent() {
       )}
 
       <Toast
+        onClose={dismissToast}
         message={toastMessage}
         visible={toastVisible}
         tone={toastTone}

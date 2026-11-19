@@ -1,5 +1,7 @@
 "use client";
 
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, CheckCircle2, LogOut, XCircle } from "lucide-react";
@@ -109,7 +111,8 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
   const router = useRouter();
   const { settings: clinicSettings } = useClinic();
   const clinicTimeSlots = useClinicTimeSlots();
-  const { toastMessage, toastVisible, toastTone, showToast } = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
+  const { toastMessage, toastVisible, toastTone, showToast, dismissToast } = useToast();
   const [session, setSession] = useState<DentalSession | null>(null);
   const [dataRev, setDataRev] = useState(0);
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(anchor));
@@ -313,7 +316,7 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
       const first = fresh[0]!;
       showToast(
         `${first.title} (${first.appointment.day} ${first.appointment.month}, ${first.appointment.time})`,
-        first.kind === "cancel" ? "error" : "success",
+        first.kind === "cancel" ? "info" : "success",
       );
     }
   }, [doctorNotifications, doctorName, seenSet, showToast]);
@@ -498,7 +501,7 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
         showToast("Нет привязки к карте пациента", "error");
         return;
       }
-      if (!window.confirm("Отменить этот приём? Пациент получит уведомление в Telegram (если есть telegram_id).")) {
+      if (!await confirm({ title: "Отменить приём?", message: "Пациент получит уведомление в Telegram, если он подключён.", confirmLabel: "Отменить приём", cancelLabel: "Оставить", destructive: true })) {
         return;
       }
       setAgendaActionId(a.id);
@@ -513,7 +516,7 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
         setAgendaActionId(null);
       }
     },
-    [showToast]
+    [showToast, confirm]
   );
 
   const todayStr = formatScheduleHeaderDateStable(anchor);
@@ -1090,6 +1093,9 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
                 </option>
               ))}
             </select>
+            {toastVisible && toastTone === "error" && (
+              <Toast inline message={toastMessage} visible tone={toastTone} onClose={dismissToast} />
+            )}
             <div className="flex gap-2">
               <button
                 type="button"
@@ -1111,7 +1117,8 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
         </div>
       )}
 
-      <Toast variant="staffPlain" message={toastMessage} visible={toastVisible} tone={toastTone} />
+      {confirmDialog}
+      <Toast onClose={dismissToast} variant="staffPlain" message={toastMessage} visible={toastVisible && !(rescheduleTarget && toastTone === "error")} tone={toastTone} />
     </main>
   );
 }
