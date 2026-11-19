@@ -21,18 +21,10 @@ export function useConfirmDialog(defaultPlacement: ConfirmDialogOptions["placeme
     return () => cancelAnimationFrame(id);
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [open]);
-
   const confirm = useCallback(
     (opts: ConfirmDialogOptions): Promise<boolean> =>
       new Promise((resolve) => {
+        if (resolveRef.current) { resolve(false); return; }
         resolveRef.current = resolve;
         setOptions({ placement: defaultPlacement, ...opts });
         setOpen(true);

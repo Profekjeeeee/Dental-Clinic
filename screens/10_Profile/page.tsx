@@ -116,7 +116,7 @@ export default function ProfilePage() {
   const [darkTheme, setDarkTheme] = useState(false);
   const [touched, setTouched] = useState<Partial<Record<keyof UserProfile, boolean>>>({});
   const [saving, setSaving] = useState(false);
-  const { toastMessage, toastVisible, toastTone, showToast } = useToast();
+  const { toastMessage, toastVisible, toastTone, showToast, dismissToast } = useToast();
 
   useEffect(() => {
     try {
@@ -332,6 +332,7 @@ export default function ProfilePage() {
 
       <BottomBar />
       <Toast
+        onClose={dismissToast}
         message={toastMessage}
         visible={toastVisible}
         tone={toastTone}

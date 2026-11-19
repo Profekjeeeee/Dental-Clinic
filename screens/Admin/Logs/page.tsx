@@ -23,8 +23,8 @@ export default function AdminLogsPage() {
   const [error, setError] = useState("");
   const { download, canDownload } = useDownloadLogs(logs, "json");
 
-  const reload = useCallback(async () => {
-    setLoading(true);
+  const reload = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     const { data, error: fetchError } = await fetchAppLogs();
     setLoading(false);
     if (fetchError) {
@@ -41,9 +41,10 @@ export default function AdminLogsPage() {
   }, [reload]);
 
   useEffect(() => {
-    const onUpdated = () => void reload();
+    const onUpdated = () => void reload(false);
     window.addEventListener(APP_LOGS_UPDATED_EVENT, onUpdated);
-    return () => window.removeEventListener(APP_LOGS_UPDATED_EVENT, onUpdated);
+    const interval = window.setInterval(onUpdated, 30000);
+    return () => { window.removeEventListener(APP_LOGS_UPDATED_EVENT, onUpdated); window.clearInterval(interval); };
   }, [reload]);
 
   const handleClear = () => {
@@ -116,7 +117,7 @@ export default function AdminLogsPage() {
             onClick={handleClear}
             className="interactive-press-sm shrink-0 rounded-[12px] border border-red-200 bg-white px-4 py-2 text-[12px] font-semibold text-red-600 shadow-raised-surface dark:border-red-900/60 dark:bg-slate-900 dark:text-red-400"
           >
-            Очистить
+            Очистить системные логи
           </button>
         </div>
       </div>

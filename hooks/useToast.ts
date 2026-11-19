@@ -1,25 +1,33 @@
 "use client";
 
-import { useState, useCallback } from "react";
-
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ToastTone } from "@/components/ui/Toast";
+import { rememberDiagnostic } from "@/lib/errorReports";
+
+type Notice = { message: string; tone: ToastTone };
 
 export function useToast() {
-  const [message, setMessage] = useState("");
-  const [visible, setVisible] = useState(false);
-  const [tone, setTone] = useState<ToastTone>("success");
+  const [queue, setQueue] = useState<Notice[]>([]);
+  const current = queue[0];
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissToast = useCallback(() => setQueue((items) => items.slice(1)), []);
 
-  const showToast = useCallback((msg: string, nextTone: ToastTone = "success") => {
-    setMessage(msg);
-    setTone(nextTone);
-    setVisible(true);
-    setTimeout(() => setVisible(false), 2500);
+  useEffect(() => {
+    if (!current || current.tone === "error") return;
+    timer.current = setTimeout(dismissToast, 4000);
+    return () => { if (timer.current) clearTimeout(timer.current); };
+  }, [current, dismissToast]);
+
+  const showToast = useCallback((message: string, tone: ToastTone = "success") => {
+    if (tone === "error") rememberDiagnostic("ERROR", message);
+    setQueue((items) => [...items, { message, tone }]);
   }, []);
 
   return {
-    toastMessage: message,
-    toastVisible: visible,
-    toastTone: tone,
+    toastMessage: current?.message ?? "",
+    toastVisible: Boolean(current),
+    toastTone: current?.tone ?? "success",
     showToast,
+    dismissToast,
   };
 }

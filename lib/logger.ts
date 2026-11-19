@@ -1,3 +1,4 @@
+import { rememberDiagnostic } from "@/lib/errorReports";
 import { getCurrentUserId } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -132,6 +133,7 @@ export function appLogRowToDentalLog(row: AppLogRow): DentalLog {
  */
 export function log(level: LogLevel, message: string, metadata: LogMetadata = {}): void {
   if (typeof window === "undefined") return;
+  rememberDiagnostic(level, message);
 
   const userId = metadata.userId ?? getCurrentUserId() ?? null;
   const enrichedMetadata = buildEnrichedMetadata(level, message, metadata, userId);
@@ -160,15 +162,31 @@ export function log(level: LogLevel, message: string, metadata: LogMetadata = {}
 }
 
 export async function fetchAppLogs(): Promise<{ data: DentalLog[]; error: string | null }> {
-  const { data, error } = await supabase
-    .from("app_logs")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) return { data: [], error: error.message };
-
+  const [logs, reports] = await Promise.all([
+    supabase.from("app_logs").select("*").order("created_at", { ascending: false }),
+    supabase.from("audit_logs").select("id, created_at, new_data").eq("table_name", "error_reports")
+      .order("created_at", { ascending: false }).limit(200),
+  ]);
+  if (logs.error) return { data: [], error: logs.error.message };
+  if (reports.error) return { data: [], error: reports.error.message };
+  const reportRows: DentalLog[] = (reports.data ?? []).map((row) => {
+    const context = (row.new_data ?? {}) as Record<string, unknown>;
+    return {
+      id: row.id,
+      timestamp: new Date(row.created_at).getTime(),
+      level: "ERROR",
+      role: "guest",
+      userId: "",
+      action: "Отчёт об ошибке",
+      message: "Отчёт об ошибке от пользователя",
+      details: String(context.details ?? ""),
+      pathname: typeof context.pathname === "string" ? context.pathname : undefined,
+      metadata: { action: "Отчёт об ошибке", context },
+    };
+  });
   return {
-    data: (data ?? []).map((row) => appLogRowToDentalLog(row as AppLogRow)),
+    data: [...(logs.data ?? []).map((row) => appLogRowToDentalLog(row as AppLogRow)), ...reportRows]
+      .sort((a, b) => b.timestamp - a.timestamp),
     error: null,
   };
 }

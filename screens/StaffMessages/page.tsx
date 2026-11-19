@@ -1,5 +1,7 @@
 "use client";
 
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -71,7 +73,8 @@ export default function StaffMessagesPage({ mode, embedded = false }: Props) {
   const [menuMessage, setMenuMessage] = useState<ChatMessage | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const { toastMessage, toastVisible, toastTone, showToast } = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
+  const { toastMessage, toastVisible, toastTone, showToast, dismissToast } = useToast();
 
   useEffect(() => {
     void resolveHydratedSession().then(setSession);
@@ -233,7 +236,7 @@ export default function StaffMessagesPage({ mode, embedded = false }: Props) {
 
   const handleDeleteMessage = async (m: ChatMessage) => {
     if (!session) return;
-    if (!confirm("Удалить сообщение?")) return;
+    if (!await confirm({ title: "Удалить сообщение?", message: "Сообщение будет удалено.", confirmLabel: "Удалить", destructive: true })) return;
     setSending(true);
     try {
       await deleteChatMessage(m.id);
@@ -589,11 +592,13 @@ export default function StaffMessagesPage({ mode, embedded = false }: Props) {
         />
       ) : null}
 
+      {confirmDialog}
       <Toast
+        onClose={dismissToast}
         message={toastMessage}
         visible={toastVisible}
         tone={toastTone}
-        variant="staffPlain"
+        variant={mode === "admin" ? "patientWithTabBar" : "staffPlain"}
       />
     </>
   );

@@ -36,6 +36,7 @@ import {
   type Bill,
 } from "@/lib/bills";
 import { Toast } from "@/components/ui/Toast";
+import { ConfirmDialogView } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/hooks/useToast";
 
 type AppointmentsTab = "upcoming" | "past";
@@ -126,7 +127,7 @@ export default function AppointmentsPage() {
   const [bills, setBills] = useState<Bill[]>([]);
   const [confirmCancelApt, setConfirmCancelApt] = useState<Appointment | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const { toastMessage, toastVisible, toastTone, showToast } = useToast();
+  const { toastMessage, toastVisible, toastTone, showToast, dismissToast } = useToast();
 
   useLayoutEffect(() => {
     if (hasAppointmentsCache()) {
@@ -464,70 +465,28 @@ export default function AppointmentsPage() {
         )}
       </main>
 
-      {/* Модальное подтверждение отмены записи */}
       {confirmCancelApt && (
-        <div
-          className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="cancel-apt-title"
-        >
-          <button
-            type="button"
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm border-0 cursor-default"
-            onClick={() => !cancellingId && setConfirmCancelApt(null)}
-            aria-label="Закрыть"
-          />
-          <div
-            className="relative z-10 w-full max-w-sm rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-xl mb-16 sm:mb-0"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2
-              id="cancel-apt-title"
-              className="text-[17px] font-bold text-[#0F172A] dark:text-white"
-            >
-              Отменить запись?
-            </h2>
-            <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-              {confirmCancelApt.service} · {confirmCancelApt.day} {confirmCancelApt.month},{" "}
-              {confirmCancelApt.time}
-            </p>
-            <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-1">
-              Неоплаченный счёт по этой записи также будет отозван.
-            </p>
-
-            <div className="flex gap-2.5 mt-5">
-              <button
-                type="button"
-                disabled={Boolean(cancellingId)}
-                onClick={() => setConfirmCancelApt(null)}
-                className="interactive-press-sm flex-1 min-h-[44px] rounded-[10px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] font-semibold text-slate-600 dark:text-slate-300"
-              >
-                Оставить
-              </button>
-              <button
-                type="button"
-                disabled={Boolean(cancellingId)}
-                onClick={() => void handleConfirmCancel()}
-                className="interactive-press-sm flex-1 min-h-[44px] rounded-[10px] bg-red-500 text-white text-[14px] font-semibold flex items-center justify-center gap-1.5 disabled:opacity-60"
-              >
-                {cancellingId ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Отмена...
-                  </>
-                ) : (
-                  "Да, отменить"
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialogView
+          visible
+          busy={Boolean(cancellingId)}
+          placement="patientWithTabBar"
+          title="Отменить запись?"
+          message={<>{confirmCancelApt.service} · {confirmCancelApt.day} {confirmCancelApt.month}, {confirmCancelApt.time}. Неоплаченный счёт по этой записи также будет отозван.</>}
+          confirmLabel="Да, отменить"
+          cancelLabel="Оставить"
+          destructive
+          feedback={toastTone === "error" && toastVisible ? (
+            <Toast inline message={toastMessage} visible tone={toastTone} onClose={dismissToast} />
+          ) : null}
+          onCancel={() => setConfirmCancelApt(null)}
+          onConfirm={() => void handleConfirmCancel()}
+        />
       )}
 
       <Toast
+        onClose={dismissToast}
         message={toastMessage}
-        visible={toastVisible}
+        visible={toastVisible && !(confirmCancelApt && toastTone === "error")}
         variant="patientWithTabBar"
         tone={toastTone}
       />
