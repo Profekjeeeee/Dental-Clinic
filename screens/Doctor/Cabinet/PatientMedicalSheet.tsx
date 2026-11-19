@@ -16,7 +16,7 @@ import {
   type DentalEmployeeRecord,
 } from "@/lib/auth";
 import { findOrCreatePrivateDoctorRoom, sendConsiliumCaseMessage } from "@/lib/doctorOrdinatorskayaChat";
-import { getAllClinicAppointments, initAppointments, type ClinicAppointment } from "@/lib/appointments";
+import { getAllClinicAppointments, initAppointments, refreshAppointmentsCache, type ClinicAppointment } from "@/lib/appointments";
 import {
   fetchTreatmentPlanItemsForPatient,
   getItemStatus,
@@ -280,6 +280,7 @@ export default function PatientMedicalSheet({
     const bumpClient = () => setClientRev((n) => n + 1);
     window.addEventListener("appointmentsUpdated", bumpApt);
     window.addEventListener("dentalClientsUpdated", bumpClient);
+    void refreshAppointmentsCache();
     return () => {
       window.removeEventListener("appointmentsUpdated", bumpApt);
       window.removeEventListener("dentalClientsUpdated", bumpClient);
@@ -306,7 +307,7 @@ export default function PatientMedicalSheet({
       contextAppointment &&
       appointmentMatchesPatientCalendarKey(contextAppointment, patientId)
     ) {
-      return contextAppointment;
+      return history.find((appointment) => appointment.id === contextAppointment.id) ?? contextAppointment;
     }
     return history[0] ?? null;
   }, [contextAppointment, patientId, history]);
@@ -362,15 +363,8 @@ export default function PatientMedicalSheet({
     if (!visitFormOpen) return;
     const apt = headerAppointment;
     if (!apt) return;
-    const y = apt.year;
-    const monthIdx = [
-      "января", "февраля", "марта", "апреля", "мая", "июня",
-      "июля", "августа", "сентября", "октября", "ноября", "декабря",
-    ].indexOf(apt.month.toLowerCase());
-    if (monthIdx >= 0) {
-      const iso = `${y}-${String(monthIdx + 1).padStart(2, "0")}-${String(apt.day).padStart(2, "0")}`;
-      setVisitForm((f) => ({ ...f, visitDate: iso }));
-    }
+    const iso = `${apt.year}-${String(apt.monthNum).padStart(2, "0")}-${String(apt.day).padStart(2, "0")}`;
+    setVisitForm((form) => ({ ...form, visitDate: iso }));
   }, [visitFormOpen, headerAppointment]);
 
   const submitVisitForm = async () => {
@@ -455,7 +449,7 @@ export default function PatientMedicalSheet({
   const patientTitle = displayClient
     ? `${displayClient.lastName} ${displayClient.firstName}`.trim()
     : "Пациент";
-  const phoneLabel = displayClient?.phone ?? "—";
+  const phoneLabel = (profile ?? (client?.id === patientId.trim() ? client : null))?.phone?.trim();
 
   const consiliumColleagues = useMemo(() => {
     const me = getDentalSession()?.id;
@@ -554,6 +548,13 @@ export default function PatientMedicalSheet({
     }
   };
 
+  const lastVisit = [...patientVisits].sort((a, b) =>
+    b.visitDate.localeCompare(a.visitDate) || b.createdAt.localeCompare(a.createdAt),
+  )[0];
+  const nextPlanItem = planItems
+    .filter((item) => getItemStatus(item.date) !== "completed")
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
+
   return (
     <div
       className="fixed inset-0 z-[100] flex flex-col bg-surface dark:bg-app-canvas"
@@ -576,7 +577,7 @@ export default function PatientMedicalSheet({
                 {patientTitle}
               </p>
               <p className="text-xs text-secondary mt-0.5 leading-snug">
-                <span className="font-mono text-[#0F172A]/85 dark:text-slate-200 break-all">{phoneLabel}</span>
+                <span className="font-mono text-[#0F172A]/85 dark:text-slate-200 break-all">{phoneLabel ? `Телефон пациента: ${phoneLabel}` : "Телефон пациента не загружен"}</span>
               </p>
             </div>
             <div className="min-w-0 flex flex-col items-end text-right">
@@ -588,7 +589,7 @@ export default function PatientMedicalSheet({
                   </p>
                   <p className="text-xs text-secondary mt-0.5 tabular-nums">{headerAppointment.time}</p>
                   <span className="mt-1 inline-flex max-w-full truncate rounded-md border border-primary/25 bg-white/80 dark:bg-slate-900/60 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                    {appointmentStatusLabelRu(headerAppointment.status)}
+                    {appointmentStatusLabelRu(headerAppointment.status, headerAppointment)}
                   </span>
                 </>
               ) : (
@@ -630,6 +631,25 @@ export default function PatientMedicalSheet({
       </header>
 
       <div className="flex-1 overflow-y-auto px-5 pb-[calc(env(safe-area-inset-bottom)+24px)] pt-4 space-y-6 max-w-[480px] mx-auto w-full">
+        {contextAppointment && (
+          <section className="space-y-2 rounded-2xl border border-primary/25 bg-primary-light p-4 dark:bg-slate-900">
+            <h2 className="font-semibold">К приёму</h2>
+            {lastVisit && (
+              <a href={`#visit-${lastVisit.id}`} className="block break-words text-sm text-primary underline">
+                Последний визит · {formatVisitDate(lastVisit.visitDate)} · {lastVisit.procedureTitle}
+              </a>
+            )}
+            {nextPlanItem && (
+              <a href={`#plan-${nextPlanItem.id}`} className="block break-words text-sm text-primary underline">
+                По плану · {nextPlanItem.date} · {nextPlanItem.title}
+              </a>
+            )}
+            <button type="button" onClick={() => setVisitFormOpen(true)}
+              className="min-h-11 rounded-xl bg-primary px-3 text-sm font-semibold text-white">
+              Записать результат
+            </button>
+          </section>
+        )}
         <section className="rounded-2xl border border-primary/25 bg-[#F0F7FD] dark:bg-primary/15 dark:border-primary/35 p-4 shadow-[0_4px_14px_rgba(36,139,207,0.08)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.28)]">
           <div className="flex items-start justify-between gap-2 mb-3">
             <div>
@@ -914,6 +934,7 @@ export default function PatientMedicalSheet({
               patientVisits.map((v) => (
                 <div
                   key={v.id}
+                  id={`visit-${v.id}`}
                   className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-[0_4px_14px_rgba(15,23,42,0.06)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.28)]"
                 >
                   <div className="flex justify-between gap-2">
@@ -978,7 +999,7 @@ export default function PatientMedicalSheet({
                       {a.day} {a.month} {a.year}, {a.time}
                     </span>
                     <span className="text-[12px] font-medium px-2 py-0.5 rounded-lg bg-[#F1F5F9] dark:bg-slate-800 text-secondary shrink-0">
-                      {appointmentStatusLabelRu(a.status)}
+                      {appointmentStatusLabelRu(a.status, a)}
                     </span>
                   </div>
                   <p className="text-[13px] text-secondary mt-1">{a.service}</p>
@@ -1006,6 +1027,7 @@ export default function PatientMedicalSheet({
                   return (
                     <div
                       key={item.id}
+                      id={`plan-${item.id}`}
                       className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 flex justify-between gap-3 shadow-[0_4px_14px_rgba(15,23,42,0.06)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.28)]"
                     >
                       <div>

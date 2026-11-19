@@ -29,7 +29,7 @@ export function Toast({
   const toneSurface =
     tone === "success"
       ? "bg-primary text-white border border-white/15 shadow-[0_8px_28px_rgba(36,139,207,0.38)]"
-      : "bg-destructive text-white border border-white/15 shadow-[0_8px_28px_rgba(186,26,26,0.38)]";
+      : "bg-red-700 text-white border border-red-800 shadow-[0_8px_28px_rgba(186,26,26,0.38)]";
 
   return (
     <div

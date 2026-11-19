@@ -7,6 +7,7 @@ import { verifyDentalGateRequest } from "@/lib/server/dentalGateVerify";
 import { isCompleteRuMobileDigits, normalizePhone } from "@/lib/phone";
 import { getSupabaseServiceRole } from "@/lib/supabase/serverAdmin";
 import { isSupabaseConfigured } from "@/lib/supabase/publicConfig";
+import { resolveClinicSlug } from "@/lib/server/clinicService";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Некорректный JSON." }, { status: 400 });
   }
 
-  const cleanPhone = normalizePhone(typeof body.phone === "string" ? body.phone : "");
+  const cleanPhone = normalizePhone(typeof body?.phone === "string" ? body.phone : "");
   if (!isCompleteRuMobileDigits(cleanPhone)) {
     return NextResponse.json({ ok: false, error: "Некорректный телефон." }, { status: 400 });
   }
@@ -47,11 +48,16 @@ export async function POST(req: Request) {
       tgDigits = gate.telegramUserId.replace(/\D/g, "");
     }
   } catch {
-    /* регистрация вне Telegram — без telegram_id */
+    return NextResponse.json({ error: "Откройте приложение через Telegram." }, { status: 401 });
   }
 
   try {
     const adm = getSupabaseServiceRole();
+    const { data: clinic, error: clinicError } = await adm
+      .from("clinics").select("id").eq("slug", resolveClinicSlug()).eq("is_active", true).single();
+    if (clinicError || !clinic) {
+      return NextResponse.json({ error: "Клиника недоступна." }, { status: 503 });
+    }
 
     const { data: ua, error: auErr } = await adm.auth.admin.createUser({
       email: `signup+client_${crypto.randomUUID()}@dental-miniapp.invalid`,
@@ -67,9 +73,9 @@ export async function POST(req: Request) {
     }
 
     const authId = ua.user.id;
-    await ensureProfileRowExists(authId);
     const insertPayload: Record<string, unknown> = {
       id: authId,
+      clinic_id: clinic.id,
       auth_user_id: authId,
       phone: cleanPhone,
       role: "client",
@@ -78,21 +84,18 @@ export async function POST(req: Request) {
       name: fullName || null,
       email: email || null,
     };
-    if (tgDigits.length > 5) insertPayload.telegram_id = tgDigits;
+    if (tgDigits) insertPayload.telegram_id = tgDigits;
 
-    let row = await adm.from("dental_clients").insert(insertPayload as never).select("*").single();
-    const insErrMsg = row.error?.message ?? "";
-    if (
-      row.error &&
-      (insErrMsg.includes("telegram_id") || row.error.code === "PGRST204" || row.error.code === "42703")
-    ) {
-      delete insertPayload.telegram_id;
-      row = await adm.from("dental_clients").insert(insertPayload as never).select("*").single();
-    }
+    const row = await adm.from("dental_clients").insert(insertPayload).select("*").single();
     if (row.error) {
+      if (row.error.code === "23505") {
+        await adm.auth.admin.deleteUser(authId);
+        return NextResponse.json({ error: "Профиль уже существует. Войдите через Telegram." }, { status: 409 });
+      }
       return NextResponse.json({ ok: false, error: row.error.message }, { status: 500 });
     }
 
+    await ensureProfileRowExists(authId);
     const tokens = await issueSupabaseSessionForUserId(authId);
     const hasPin = await profileHasPinHash(authId);
     const session = clientRowToPayload(row.data as Record<string, unknown>, tokens, hasPin);

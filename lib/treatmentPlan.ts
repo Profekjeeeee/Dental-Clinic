@@ -135,9 +135,6 @@ export function computeStats(items: TreatmentPlanItem[]): TreatmentPlanStats {
 
 // ─── Storage (Supabase) ───────────────────────────────────────────────────────
 
-const LEGACY_BASE_KEY = "treatment_plan";
-const LEGACY_VERSION_KEY = "treatment_plan_version";
-const MIGRATION_FLAG = "treatment_plan_migrated_to_supabase_v1";
 
 function getClientSubjectIdForFilters(): string | null {
   const uid = getCurrentUserId();
@@ -145,15 +142,6 @@ function getClientSubjectIdForFilters(): string | null {
   const session = getDentalSession();
   if (session?.role === "client" && session.id) return session.id;
   return null;
-}
-
-function legacyStorageKey(uid?: string | null): string {
-  const id = uid ?? getCurrentUserId();
-  return id ? `${LEGACY_BASE_KEY}_${id}` : LEGACY_BASE_KEY;
-}
-
-function migrationFlagKey(uid: string): string {
-  return `${MIGRATION_FLAG}_${uid}`;
 }
 
 function dispatchTreatmentPlanUpdated(): void {
@@ -231,62 +219,6 @@ async function resolvePatientIdForWrite(): Promise<string | null> {
   return resolveClientIdForAppointment();
 }
 
-async function migrateTreatmentPlanFromLocalStorage(): Promise<void> {
-  if (typeof window === "undefined") return;
-
-  const quickUid = getClientSubjectIdForFilters();
-  if (quickUid && localStorage.getItem(migrationFlagKey(quickUid))) return;
-
-  const patientId = quickUid ?? (await resolvePatientIdForWrite());
-  if (!patientId) return;
-
-  const flagKey = migrationFlagKey(patientId);
-  if (localStorage.getItem(flagKey)) return;
-
-  const raw = localStorage.getItem(legacyStorageKey(patientId));
-  if (!raw) {
-    localStorage.removeItem(legacyStorageKey(null));
-    localStorage.removeItem(`${LEGACY_VERSION_KEY}_${patientId}`);
-    localStorage.setItem(flagKey, "1");
-    return;
-  }
-
-  let legacyItems: TreatmentPlanItem[] = [];
-  try {
-    legacyItems = JSON.parse(raw) as TreatmentPlanItem[];
-  } catch {
-    localStorage.setItem(flagKey, "1");
-    return;
-  }
-
-  for (const item of legacyItems.filter((i) => !i.appointmentId)) {
-    const phase = getItemStatus(item.date);
-    const { error } = await supabase.from("treatment_plan_items").insert([
-      {
-        patient_id: patientId,
-        title: item.title,
-        description: item.title,
-        category: item.category,
-        price: item.price,
-        priority: getCategoryStageNum(item.category),
-        status: dbStatusFromItemStatus(phase),
-        planned_date: item.date,
-        completed_date: phase === "completed" ? item.date : null,
-      },
-    ]);
-
-    if (error) {
-      console.error("[treatmentPlan] migrate", error);
-    }
-  }
-
-  localStorage.removeItem(legacyStorageKey(patientId));
-  localStorage.removeItem(legacyStorageKey(null));
-  localStorage.removeItem(`${LEGACY_VERSION_KEY}_${patientId}`);
-  localStorage.removeItem(LEGACY_VERSION_KEY);
-  localStorage.setItem(flagKey, "1");
-}
-
 export async function initTreatmentPlan(): Promise<void> {
   if (hasTreatmentPlanCache()) {
     if (Date.now() - lastTreatmentPlanFetchedAt >= TREATMENT_PLAN_STALE_TTL_MS) {
@@ -294,7 +226,6 @@ export async function initTreatmentPlan(): Promise<void> {
     }
     return;
   }
-  await migrateTreatmentPlanFromLocalStorage();
   await refreshTreatmentPlanCache(false);
 }
 

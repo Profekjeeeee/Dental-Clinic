@@ -28,7 +28,6 @@ import {
 } from "@/lib/routes";
 import { fetchPlatformMe } from "@/lib/platform/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { prefetchPatientCabinet } from "@/lib/patientCabinet";
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_ROUTE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -54,7 +53,6 @@ export default function PatientAppGate({ children }: { children: React.ReactNode
   const [hydratedSession, setHydratedSession] = useState<DentalSession | null | undefined>(undefined);
   const [platformAdminOk, setPlatformAdminOk] = useState<boolean | null>(null);
   const hydrationLogDone = useRef(false);
-  const clientPrefetchDoneForId = useRef<string | null>(null);
 
   /** Мгновенно поднимаем сессию из LS (до сетевых запросов), затем синхронизируем Supabase по телефону. */
   useLayoutEffect(() => {
@@ -94,7 +92,6 @@ export default function PatientAppGate({ children }: { children: React.ReactNode
       const finalSession = session ?? getDentalSession();
 
       if (!cancelled) setHydratedSession(finalSession ?? null);
-      if (finalSession?.role === "client") prefetchPatientCabinet();
     })();
 
     const onStorage = (e: StorageEvent) => {
@@ -115,10 +112,7 @@ export default function PatientAppGate({ children }: { children: React.ReactNode
       const current = getDentalSession();
       setHydratedSession(current);
       if (current) {
-        void Promise.all([refreshDentalCaches(), refreshAppointmentsCache(true)]);
-        if (current.role === "client") {
-          prefetchPatientCabinet();
-        }
+        void Promise.all([refreshDentalCaches(), refreshAppointmentsCache()]);
       }
       void (async () => {
         let session = current ?? (await resolveHydratedSession());
@@ -162,31 +156,6 @@ export default function PatientAppGate({ children }: { children: React.ReactNode
       setHydratedSession((prev) => (prev === null ? prev : null));
     }
   }, [pathname]);
-
-  /** Фоновый предзапрос маршрутов и данных ЛК клиента один раз на сессию. */
-  useEffect(() => {
-    if (hydratedSession?.role !== "client") {
-      clientPrefetchDoneForId.current = null;
-      return;
-    }
-    if (clientPrefetchDoneForId.current === hydratedSession.id) return;
-    clientPrefetchDoneForId.current = hydratedSession.id;
-
-    const routesToWarm = [
-      ROUTES.clientHome,
-      "/appointments",
-      "/formula",
-      "/bills",
-      "/cabinet",
-      "/booking",
-      "/profile",
-      ROUTES.patientSupportChat,
-    ];
-    for (const r of routesToWarm) {
-      router.prefetch(r);
-    }
-    prefetchPatientCabinet();
-  }, [hydratedSession?.id, hydratedSession?.role, router]);
 
   useEffect(() => {
     setPlatformAdminOk((prev) => (prev === null ? prev : null));

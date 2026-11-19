@@ -151,3 +151,45 @@
     display: none;
   }
 }
+
+@media (min-width: 768px) {
+  body:has(.admin-shell),
+  body:has(.patient-home) {
+    max-width: none;
+  }
+
+  .admin-shell {
+    max-width: 1440px;
+    margin-inline: auto;
+    padding-inline-start: 10rem;
+  }
+
+  .admin-navigation {
+    inset: 0 auto 0 max(0px, calc((100vw - 1440px) / 2));
+    width: 10rem;
+    padding: max(1rem, env(safe-area-inset-top)) .75rem 1rem;
+    align-items: flex-start;
+  }
+
+  .admin-navigation ul {
+    flex-direction: column;
+    align-items: stretch;
+    padding: .25rem;
+  }
+
+  .admin-navigation li > a {
+    max-width: none;
+    min-height: 48px;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: .25rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  .layout-doctor-cabinet .layout-schedule-area {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+  }
+}

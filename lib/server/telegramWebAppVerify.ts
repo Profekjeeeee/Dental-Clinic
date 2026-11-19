@@ -38,12 +38,10 @@ export function verifyTelegramWebAppInitData(
   if (!incomingHash || !incomingHash.trim()) return null;
 
   const authDateRaw = params.get("auth_date");
-  if (authDateRaw) {
-    const authDate = Number.parseInt(authDateRaw, 10);
-    if (!Number.isFinite(authDate)) return null;
-    const now = Math.floor(Date.now() / 1000);
-    if (now - authDate > maxAgeSec) return null;
-  }
+  if (!authDateRaw || !/^\d+$/.test(authDateRaw)) return null;
+  const authDate = Number(authDateRaw);
+  const now = Math.floor(Date.now() / 1000);
+  if (!Number.isSafeInteger(authDate) || authDate > now + 30 || now - authDate > maxAgeSec) return null;
 
   params.delete("hash");
 

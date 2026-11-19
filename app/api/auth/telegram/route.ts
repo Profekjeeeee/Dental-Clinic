@@ -5,7 +5,8 @@ import { clientRowToPayload, type AuthSessionPayload } from "@/lib/server/authSe
 import { ensureShadowAuthForRow } from "@/lib/server/ensureShadowAuth";
 import { issueSupabaseSessionForUserId } from "@/lib/server/issueSupabaseSession";
 import { DentalGateError, verifyDentalGateRequest } from "@/lib/server/dentalGateVerify";
-import { getSupabaseAnonServer } from "@/lib/server/supabaseAnon";
+import { getSupabaseServiceRole } from "@/lib/supabase/serverAdmin";
+import { resolveClinicSlug } from "@/lib/server/clinicService";
 import { isSupabaseConfigured } from "@/lib/supabase/publicConfig";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Некорректный JSON." }, { status: 400 });
   }
 
-  const initData = typeof body.initData === "string" ? body.initData : "";
+  const initData = typeof body?.initData === "string" ? body.initData : "";
   let gate;
   try {
     gate = verifyDentalGateRequest(initData);
@@ -43,12 +44,18 @@ export async function POST(req: Request) {
   }
 
   try {
-    const supabase = getSupabaseAnonServer();
+    const supabase = getSupabaseServiceRole();
+    const { data: clinic, error: clinicError } = await supabase
+      .from("clinics").select("id").eq("slug", resolveClinicSlug()).eq("is_active", true).single();
+    if (clinicError || !clinic) {
+      return NextResponse.json({ error: "Клиника недоступна." }, { status: 503 });
+    }
 
     // Кнопка «Войти через Telegram» — только для пациентов. Врач/админ входят по номеру телефона.
     const { data: cli, error: cErr } = await supabase
       .from("dental_clients")
       .select("*")
+      .eq("clinic_id", clinic.id)
       .eq("telegram_id", tgDigits)
       .limit(1)
       .maybeSingle();

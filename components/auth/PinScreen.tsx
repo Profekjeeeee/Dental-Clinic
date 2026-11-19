@@ -4,12 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { PinDots } from "@/components/auth/PinDots";
 import { PinKeypad } from "@/components/auth/PinKeypad";
-import {
-  PIN_AUTO_SUBMIT_LEN,
-  PIN_MAX_LEN,
-  PIN_MIN_LEN,
-  type VerifyPinResult,
-} from "@/lib/auth/pinApi";
+import { PIN_LENGTH, type VerifyPinResult } from "@/lib/auth/pinApi";
 
 export type PinScreenMode = "verify" | "create" | "confirm";
 
@@ -51,8 +46,6 @@ export function PinScreen({
   const [lockLabel, setLockLabel] = useState("");
   const submitRef = useRef(false);
 
-  const targetLen = mode === "verify" ? PIN_AUTO_SUBMIT_LEN : PIN_MIN_LEN;
-  const maxLen = mode === "verify" ? PIN_AUTO_SUBMIT_LEN : PIN_MAX_LEN;
   const locked = Boolean(lockedUntil && new Date(lockedUntil).getTime() > Date.now());
 
   useEffect(() => {
@@ -75,6 +68,7 @@ export function PinScreen({
     async (value: string) => {
       if (submitRef.current || loading || locked) return;
       submitRef.current = true;
+      setPin("");
       try {
         await onComplete(value);
       } finally {
@@ -88,7 +82,6 @@ export function PinScreen({
     async (value: string) => {
       if (mode === "create" || mode === "confirm") {
         if (!firstPin) {
-          if (value.length < PIN_MIN_LEN) return;
           setFirstPin(value);
           setPin("");
           setLocalError("");
@@ -109,16 +102,13 @@ export function PinScreen({
   );
 
   useEffect(() => {
-    if (pin.length < targetLen) return;
-    if (pin.length === targetLen || (mode !== "verify" && pin.length === maxLen)) {
-      void handleFilled(pin);
-    }
-  }, [pin, targetLen, maxLen, mode, handleFilled]);
+    if (pin.length === PIN_LENGTH) void handleFilled(pin);
+  }, [pin, handleFilled]);
 
   const pushDigit = (d: string) => {
     if (loading || locked) return;
     setLocalError("");
-    setPin((p) => (p.length >= maxLen ? p : p + d));
+    setPin((p) => (p.length >= PIN_LENGTH ? p : p + d));
   };
 
   const displayError =
@@ -146,7 +136,7 @@ export function PinScreen({
         ) : null}
       </div>
 
-      <PinDots length={maxLen} filled={pin.length} error={Boolean(displayError)} />
+      <PinDots length={PIN_LENGTH} filled={pin.length} error={Boolean(displayError)} />
 
       {displayError ? (
         <p className="text-center text-[13px] text-red-600 dark:text-red-400 mb-4" role="alert">

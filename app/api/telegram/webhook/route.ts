@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 
 function verifyWebhookSecret(request: Request): boolean {
   const expected = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
-  if (!expected) return true;
+  if (!expected) return false;
   const headerSecret = request.headers.get("x-telegram-bot-api-secret-token")?.trim();
   if (headerSecret && headerSecret === expected) return true;
   const url = new URL(request.url);
@@ -65,8 +65,10 @@ async function safeEditMessage(params: {
 }) {
   try {
     await editTelegramMessage(params);
+    return true;
   } catch (e) {
     console.warn("[telegram/webhook] editTelegramMessage failed:", e);
+    return false;
   }
 }
 
@@ -146,6 +148,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  const { data: patient, error: patientError } = await sb
+    .from("dental_clients")
+    .select("telegram_id")
+    .eq("id", apt.client_id)
+    .eq("clinic_id", apt.clinic_id)
+    .maybeSingle();
+  if (patientError) return NextResponse.json({ error: "Ошибка проверки записи." }, { status: 503 });
+  if (!patient?.telegram_id || String(patient.telegram_id) !== String(cq.from.id) ||
+      !apt.confirmation_tg_message_id || String(apt.confirmation_tg_message_id) !== String(cq.message?.message_id)) {
+    await safeAnswerCallback({ callbackQueryId: cq.id, text: "Кнопка больше недоступна.", showAlert: true });
+    return NextResponse.json({ ok: true });
+  }
+
   const chatId = cq.message?.chat.id;
   const messageId = cq.message?.message_id;
   const doctorName = escapeHtmlTg(String(apt.doctor_name ?? "врача"));
@@ -154,29 +169,10 @@ export async function POST(request: Request) {
 
   if (parsed.action === "confirm") {
     if (apt.status === "cancelled") {
-      if (chatId != null && messageId != null) {
-        await safeEditMessage({
-          chatId,
-          messageId,
-          text:
-            `<b>❌ Запись отменена</b>\n` +
-            `Приём у врача ${doctorName}\n` +
-            `Дата: ${dateRu}\n` +
-            `Время: ${timeRu}`,
-          replyMarkup: appOpenKeyboard(),
-        });
-      }
       await safeAnswerCallback({
         callbackQueryId: cq.id,
         text: "Запись уже была отменена",
         showAlert: true,
-      });
-      await safeSendMessage({
-        chatId: replyChatId,
-        text:
-          `<b>⚠️ Запись уже отменена</b>\n` +
-          `Приём у врача ${doctorName} (${dateRu}, ${timeRu}) был отменён ранее.`,
-        replyMarkup: appOpenKeyboard(),
       });
       return NextResponse.json({ ok: true });
     }
@@ -205,13 +201,7 @@ export async function POST(request: Request) {
       text: alreadyConfirmed ? "Запись уже подтверждена" : "✅ Запись успешно подтверждена",
     });
 
-    if (!alreadyConfirmed) {
-      try {
-        await notifyDoctorPatientConfirmed(parsed.appointmentId);
-      } catch (e) {
-        console.warn("[telegram/webhook] notifyDoctorPatientConfirmed failed:", e);
-      }
-    }
+    if (alreadyConfirmed) return NextResponse.json({ ok: true });
 
     const cardText =
       `<b>✅ Запись успешно подтверждена</b>\n` +
@@ -220,46 +210,30 @@ export async function POST(request: Request) {
       `Время: ${timeRu}\n\n` +
       `До встречи в клинике!`;
 
-    if (chatId != null && messageId != null) {
-      await safeEditMessage({
-        chatId,
-        messageId,
-        text: cardText,
-        replyMarkup: appOpenKeyboard(),
-      });
-    }
-
-    await safeSendMessage({
-      chatId: replyChatId,
-      text: alreadyConfirmed
-        ? `<b>✅ Запись уже подтверждена</b>\nВрач: ${doctorName}\nДата: ${dateRu}\nВремя: ${timeRu}`
-        : `<b>✅ Запись успешно подтверждена</b>\nВрач: ${doctorName}\nДата: ${dateRu}\nВремя: ${timeRu}\n\nЖдём вас на приёме!`,
+    const edited = chatId != null && messageId != null && await safeEditMessage({
+      chatId,
+      messageId,
+      text: cardText,
       replyMarkup: appOpenKeyboard(),
     });
+    if (!edited) {
+      await safeSendMessage({ chatId: replyChatId, text: cardText, replyMarkup: appOpenKeyboard() });
+    }
+
+    if (!alreadyConfirmed) {
+      try {
+        await notifyDoctorPatientConfirmed(parsed.appointmentId);
+      } catch (e) {
+        console.warn("[telegram/webhook] notifyDoctorPatientConfirmed failed:", e);
+      }
+    }
 
     return NextResponse.json({ ok: true });
   }
 
   // parsed.action === "cancel"
   if (apt.status === "cancelled") {
-    if (chatId != null && messageId != null) {
-      await safeEditMessage({
-        chatId,
-        messageId,
-        text:
-          `<b>❌ Запись отменена</b>\n` +
-          `Приём у врача ${doctorName}\n` +
-          `Дата: ${dateRu}\n` +
-          `Время: ${timeRu}`,
-        replyMarkup: appOpenKeyboard(),
-      });
-    }
     await safeAnswerCallback({ callbackQueryId: cq.id, text: "Запись уже отменена" });
-    await safeSendMessage({
-      chatId: replyChatId,
-      text: `<b>❌ Запись уже отменена</b>\nПриём у врача ${doctorName} (${dateRu}, ${timeRu}).`,
-      replyMarkup: appOpenKeyboard(),
-    });
     return NextResponse.json({ ok: true });
   }
 
@@ -315,20 +289,19 @@ export async function POST(request: Request) {
     `Время: ${timeRu}\n\n` +
     `Время освобождено. Чтобы записаться снова — откройте приложение.`;
 
-  if (chatId != null && messageId != null) {
-    await safeEditMessage({
-      chatId,
-      messageId,
+  const edited = chatId != null && messageId != null && await safeEditMessage({
+    chatId,
+    messageId,
+    text: cancelledText,
+    replyMarkup: appOpenKeyboard(),
+  });
+  if (!edited) {
+    await safeSendMessage({
+      chatId: replyChatId,
       text: cancelledText,
       replyMarkup: appOpenKeyboard(),
     });
   }
-
-  await safeSendMessage({
-    chatId: replyChatId,
-    text: cancelledText,
-    replyMarkup: appOpenKeyboard(),
-  });
 
   return NextResponse.json({ ok: true });
 }

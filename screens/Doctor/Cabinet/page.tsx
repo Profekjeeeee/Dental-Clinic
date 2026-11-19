@@ -16,6 +16,7 @@ import { ROUTES } from "@/lib/routes";
 import {
   getAllClinicAppointments,
   refreshAppointmentsCache,
+  hasAppointmentsCache,
   cancelAppointment,
   rescheduleAppointment,
   RU_MONTHS_SHORT,
@@ -34,9 +35,7 @@ import {
 } from "@/lib/doctorSchedule";
 import { canJoinVideoWindow } from "@/lib/videoConsultation";
 import DoctorMonthCalendar from "@/screens/Doctor/Cabinet/DoctorMonthCalendar";
-import DoctorOrdinatorskayaChat from "@/screens/Doctor/Cabinet/DoctorOrdinatorskayaChat";
-import PatientMedicalSheet from "@/screens/Doctor/Cabinet/PatientMedicalSheet";
-import StaffMessagesPage from "@/screens/StaffMessages/page";
+import dynamic from "next/dynamic";
 import ThemeToggleButton from "@/components/ui/ThemeToggleButton";
 import { useClientNow } from "@/hooks/useClientNow";
 import { DOCTOR_OPEN_PATIENT_MEDICAL_SHEET_EVENT } from "@/lib/doctorMedicalSheetEvents";
@@ -48,9 +47,22 @@ import {
   type StaffDialogPreview,
 } from "@/lib/supportChat";
 
-type DoctorCabinetTab = "calendar" | "chats" | "settings";
+const chatLoading = () => <p role="status" className="p-4 text-sm text-secondary">Загружаем чат…</p>;
+const DoctorOrdinatorskayaChat = dynamic(() => import("./DoctorOrdinatorskayaChat"), { loading: chatLoading });
+const StaffMessagesPage = dynamic(() => import("@/screens/StaffMessages/page"), { loading: chatLoading });
 
-type DesktopNavId = "schedule" | "chats" | "patients" | "cards" | "settings";
+const PatientMedicalSheet = dynamic(() => import("./PatientMedicalSheet"), {
+  ssr: false,
+  loading: () => (
+    <div role="status" className="fixed inset-0 z-[100] grid place-items-center bg-surface dark:bg-app-canvas">
+      Загружаем карту пациента…
+    </div>
+  ),
+});
+
+type DoctorCabinetTab = "calendar" | "chats" | "patients" | "settings";
+
+type DesktopNavId = "schedule" | "chats" | "patients" | "settings";
 
 function formatChatPreviewTime(ts: number): string {
   try {
@@ -112,6 +124,10 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
   const { toastMessage, toastVisible, toastTone, showToast } = useToast();
   const [session, setSession] = useState<DentalSession | null>(null);
   const [dataRev, setDataRev] = useState(0);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [patientQuery, setPatientQuery] = useState("");
+  const [scheduleLoading, setScheduleLoading] = useState(true);
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(anchor));
   const [selectedDate, setSelectedDate] = useState(() => anchor);
   const [sheetOpen, setSheetOpen] = useState<{
@@ -189,14 +205,27 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
     };
   }, [refreshChatPreviews]);
 
-  useEffect(() => {
-    void (async () => {
-      await refreshDentalCaches();
+  const refreshSchedule = useCallback(async () => {
+    setScheduleLoading(!hasAppointmentsCache());
+    try {
       await refreshAppointmentsCache();
-      setSession(await resolveHydratedSession());
-      initialSyncDoneRef.current = true;
-    })();
+    } finally {
+      setScheduleLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    void resolveHydratedSession().then((session) => {
+      if (active) setSession(session);
+    });
+    void Promise.allSettled([refreshDentalCaches(), refreshSchedule()]).then(() => {
+      if (!active) return;
+      initialSyncDoneRef.current = true;
+      setDataRev((rev) => rev + 1);
+    });
+    return () => { active = false; };
+  }, [refreshSchedule]);
 
   useEffect(() => {
     const bump = () => setDataRev((x) => x + 1);
@@ -397,9 +426,7 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
         setDoctorChatsScope("colleagues");
         break;
       case "patients":
-      case "cards":
-        setCabinetTab("chats");
-        setDoctorChatsScope("patients");
+        setCabinetTab("patients");
         break;
       case "settings":
         setCabinetTab("settings");
@@ -415,8 +442,7 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
         case "chats":
           return cabinetTab === "chats" && doctorChatsScope === "colleagues";
         case "patients":
-        case "cards":
-          return cabinetTab === "chats" && doctorChatsScope === "patients";
+          return cabinetTab === "patients";
         case "settings":
           return cabinetTab === "settings";
       }
@@ -523,7 +549,6 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
     { id: "schedule", label: "Расписание" },
     { id: "chats", label: "Чаты" },
     { id: "patients", label: "Пациенты" },
-    { id: "cards", label: "Карты" },
     { id: "settings", label: "Настройки" },
   ];
 
@@ -560,31 +585,67 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
     </div>
   );
 
-  const renderDayPlan = (agenda: ClinicAppointment[], dateLabel: string, headingClassName = "mt-6 mb-4") => (
+  const selectedIsToday = selectedDate.toDateString() === anchor.toDateString();
+  const nextVisit = selectedIsToday ? todayStats.next : null;
+  const completed = dayAgenda.filter((a) => a.status === "completed");
+  const visibleAgenda = [
+    ...(nextVisit ? [nextVisit] : []),
+    ...dayAgenda.filter((a) => a.id !== nextVisit?.id && (showCompleted || a.status !== "completed")),
+  ];
+  const nextDate = doctorAppointments
+    .filter((a) => isAppointmentDoctorEditable(a.status))
+    .map((a) => new Date(a.year, a.monthNum - 1, a.day))
+    .filter((date) => date > selectedDate)
+    .sort((a, b) => a.getTime() - b.getTime())[0];
+  const patients = [...new Set(doctorAppointments.flatMap((a) => a.patientId ? [a.patientId] : []))]
+    .map((id) => {
+      const patient = resolveDentalClientFromCacheSync(id);
+      return { id, name: patient ? `${patient.lastName} ${patient.firstName}`.trim() : patientShortName(id) };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "ru"))
+    .filter((p) => p.name.toLocaleLowerCase("ru").includes(patientQuery.trim().toLocaleLowerCase("ru")));
+
+  function selectScheduleDate(date: Date) {
+    setSelectedDate(date);
+    setViewMonth(startOfMonth(date));
+    setShowCompleted(false);
+  }
+
+  const renderDayPlan = (agenda: ClinicAppointment[], dateLabel: string) => (
     <>
-      <div className={`layout-dayplan-heading flex items-baseline justify-between gap-2 ${headingClassName}`}>
+      <div className={`layout-dayplan-heading flex items-baseline justify-between gap-2 mt-4 mb-3`}>
         <h2 className="text-[16px] font-bold text-[#0F172A] dark:text-white">План на день</h2>
         <p className="text-[12px] text-secondary text-right leading-tight">{dateLabel}</p>
       </div>
 
-      <div className="flex flex-col gap-2 pb-8">
-        {agenda.length === 0 ? (
+      <div className="flex flex-col gap-2 pb-3">
+        {scheduleLoading ? (
+          <p role="status" className="text-sm text-secondary">Загружаем расписание…</p>
+        ) : !hasAppointmentsCache() ? (
+          <button type="button" className="min-h-11 text-primary" onClick={() => void refreshSchedule()}>
+            Не удалось загрузить расписание. Повторить
+          </button>
+        ) : dayAgenda.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[#E2E8F0] dark:border-slate-700 px-4 py-8 text-center">
             <p className="text-[14px] text-secondary">На выбранную дату нет записей к этому врачу.</p>
-            <p className="text-[12px] text-secondary mt-2 opacity-80">
-              Новые приёмы синхронизируются через Supabase — видны и в браузере, и в Telegram Mini App.
-            </p>
+            {nextDate && (
+              <button type="button" className="min-h-11 text-primary" onClick={() => selectScheduleDate(nextDate)}>
+                К следующему дню с записью
+              </button>
+            )}
           </div>
         ) : (
           agenda.map((a: ClinicAppointment) => {
             const disabled = !a.patientId;
             const busy = agendaActionId === a.id;
             const canEdit = Boolean(a.patientId && isAppointmentDoctorEditable(a.status));
+            const isNext = a.id === nextVisit?.id;
             return (
               <div
                 key={a.id}
                 className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-[0_4px_16px_rgba(15,23,42,0.06)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.32)]"
               >
+                {isNext && <p className="mb-2 text-sm font-semibold text-primary">Ближайший приём</p>}
                 <button
                   type="button"
                   disabled={disabled || busy}
@@ -614,6 +675,7 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
                     {patientShortName(a.patientId)}
                   </p>
                   <p className="text-[13px] text-secondary mt-1 leading-snug">{a.service}</p>
+                  {!disabled && <span className="mt-2 inline-block text-sm font-semibold text-primary">Открыть карту</span>}
                   {a.visitMode === "video" && (
                     <span className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary-light text-primary">
                       Онлайн
@@ -621,7 +683,7 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
                   )}
                   {!a.patientId && (
                     <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
-                      Запись без patientId — карта недоступна. Новые записи из ЛК пациента содержат ID.
+                      Карта не привязана
                     </p>
                   )}
                 </button>
@@ -639,22 +701,27 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
                         Начать видеоконсультацию
                       </button>
                     )}
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openRescheduleModal(a)}
-                        className="flex-1 h-11 rounded-[10px] text-[12px] font-semibold border border-primary/30 bg-primary-light text-primary active:scale-[0.98] flex items-center justify-center"
-                      >
-                        Перенести
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDoctorCancel(a)}
-                        className="flex-1 h-11 rounded-[10px] text-[12px] font-semibold border border-slate-200 dark:border-slate-600 text-secondary active:scale-[0.98] flex items-center justify-center"
-                      >
-                        Отменить
-                      </button>
-                    </div>
+                    <details>
+                      <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-primary">
+                        Действия с записью
+                      </summary>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openRescheduleModal(a)}
+                          className="flex-1 h-11 rounded-[10px] text-[12px] font-semibold border border-primary/30 bg-primary-light text-primary active:scale-[0.98] flex items-center justify-center"
+                        >
+                          Перенести
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDoctorCancel(a)}
+                          className="flex-1 h-11 rounded-[10px] text-[12px] font-semibold border border-slate-200 dark:border-slate-600 text-secondary active:scale-[0.98] flex items-center justify-center"
+                        >
+                          Отменить
+                        </button>
+                      </div>
+                    </details>
                   </div>
                 )}
               </div>
@@ -753,7 +820,7 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
                 : "text-secondary dark:text-slate-400 bg-transparent"
             }`}
           >
-            Календарь
+            Приёмы
           </button>
           <button
             type="button"
@@ -768,6 +835,11 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
             }`}
           >
             Чаты
+          </button>
+          <button type="button" role="tab" aria-selected={cabinetTab === "patients"}
+            onClick={() => setCabinetTab("patients")}
+            className={`flex-1 min-h-11 rounded-xl text-sm font-semibold ${cabinetTab === "patients" ? "bg-primary text-white" : "text-secondary"}`}>
+            Пациенты
           </button>
         </div>
 
@@ -893,27 +965,63 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
             </div>
           </div>
         ) : cabinetTab === "calendar" ? (
-          <div className="layout-schedule-area">
-            <div className="layout-calendar-col">
-              <DoctorMonthCalendar
-                viewMonth={viewMonth}
-                selectedDate={selectedDate}
-                clientNow={anchor}
-                daysWithAppointments={daysWithDots}
-                onSelectDay={handleSelectCalendarDay}
-                onPrevMonth={goPrevMonth}
-                onNextMonth={goNextMonth}
-              />
+          <div>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <button type="button" aria-expanded={calendarOpen} onClick={() => setCalendarOpen(!calendarOpen)}
+                className="min-h-11 rounded-xl border border-primary/30 px-3 text-sm font-semibold text-primary">
+                {selectedIsToday ? "Сегодня · " : ""}{selectedStr}
+              </button>
+              {!selectedIsToday && (
+                <button type="button" className="min-h-11 px-2 text-sm text-primary" onClick={() => selectScheduleDate(anchor)}>Сегодня</button>
+              )}
             </div>
-
-            <div className="layout-dayplan-selected layout-dayplan-col">
-              {renderDayPlan(dayAgenda, selectedStr)}
-            </div>
-
-            <div className="layout-dayplan-today layout-dayplan-col">
-              {renderDayPlan(todayAgenda, todayStr, "mt-6 mb-4")}
+            {selectedIsToday && !scheduleLoading && hasAppointmentsCache() && dayAgenda.length > 0 && (
+              <p className="mb-3 text-sm text-secondary">
+                Приёмов: {dayAgenda.length} · завершено: {completed.length}
+                {dayAgenda.every((a) => a.status === "completed" || a.status === "cancelled") && " · На сегодня всё"}
+              </p>
+            )}
+            <div className={calendarOpen ? "layout-schedule-area" : undefined}>
+              {calendarOpen && (
+                <div className="layout-calendar-col min-w-0 max-w-full">
+                  <DoctorMonthCalendar
+                    viewMonth={viewMonth}
+                    selectedDate={selectedDate}
+                    clientNow={anchor}
+                    daysWithAppointments={daysWithDots}
+                    onSelectDay={(day) => { handleSelectCalendarDay(day); setShowCompleted(false); }}
+                    onPrevMonth={goPrevMonth}
+                    onNextMonth={goNextMonth}
+                  />
+                </div>
+              )}
+              <div className="layout-dayplan-col min-w-0">
+                {renderDayPlan(visibleAgenda, selectedStr)}
+                {completed.length > 0 && (
+                  <button type="button" aria-expanded={showCompleted} className="min-h-11 text-sm font-semibold text-primary"
+                    onClick={() => setShowCompleted(!showCompleted)}>
+                    {showCompleted ? "Скрыть завершённые" : `Показать завершённые (${completed.length})`}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
+        ) : cabinetTab === "patients" ? (
+          <section className="space-y-3">
+            <h2 className="text-lg font-bold">Пациенты</h2>
+            <input type="search" aria-label="Поиск пациента по имени" placeholder="Имя или фамилия"
+              className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 dark:bg-slate-900"
+              value={patientQuery} onChange={(e) => setPatientQuery(e.target.value)} />
+            {patients.length === 0 && <p className="text-sm text-secondary">Пациенты не найдены</p>}
+            <ul className="space-y-2">
+              {patients.map(({ id, name }) => (
+                <li key={id}>
+                  <button type="button" className="min-h-12 w-full rounded-xl border border-slate-300 px-3 text-left"
+                    onClick={() => setSheetOpen({ patientId: id })}>{name}</button>
+                </li>
+              ))}
+            </ul>
+          </section>
         ) : (
           <div className="layout-chats-view flex flex-col flex-1 min-h-0 pb-8 gap-4">
             <div
@@ -973,20 +1081,7 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
               <p className="text-[12px] text-secondary">Завершено</p>
               <p className="text-[22px] font-bold text-[#0F172A] dark:text-white tabular-nums">{todayStats.completed}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-[0_4px_16px_rgba(15,23,42,0.06)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.32)]">
-              <p className="text-[12px] text-secondary">Следующий приём</p>
-              {todayStats.next ? (
-                <>
-                  <p className="text-[16px] font-bold text-primary tabular-nums mt-1">{todayStats.next.time}</p>
-                  <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white mt-1 truncate">
-                    {patientShortName(todayStats.next.patientId)}
-                  </p>
-                  <p className="text-[12px] text-secondary mt-0.5 truncate">{todayStats.next.service}</p>
-                </>
-              ) : (
-                <p className="text-[14px] text-secondary mt-1">Нет предстоящих</p>
-              )}
-            </div>
+
           </div>
 
           <div className="layout-right-panel-chats">
@@ -1010,7 +1105,7 @@ function DoctorCabinetInner({ anchor }: { anchor: Date }) {
                   <li key={`${p.patientId}_${p.scope}`}>
                     <button
                       type="button"
-                      onClick={() => handleDesktopNav("patients")}
+                      onClick={() => { setCabinetTab("chats"); setDoctorChatsScope("patients"); }}
                       className="interactive-press-sm w-full text-left rounded-[14px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 flex gap-3 items-start shadow-[0_4px_14px_rgba(15,23,42,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.28)]"
                     >
                       <div className="w-10 h-10 rounded-full bg-primary-light flex items-center justify-center text-[13px] font-bold text-primary shrink-0">

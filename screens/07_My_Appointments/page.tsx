@@ -140,22 +140,22 @@ export default function AppointmentsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      await Promise.all([initAppointments(), initBills()]);
+      await initAppointments();
       setAppointments(getAppointments());
-      setBills(getBills());
     } finally {
       setLoading(false);
     }
   }, []);
 
   const syncFreshData = useCallback(async () => {
-    await Promise.all([refreshAppointmentsCache(true), refreshBillsCache(true)]);
+    await Promise.all([refreshAppointmentsCache(), refreshBillsCache()]);
     setAppointments(getAppointments());
     setBills(getBills());
   }, []);
 
   useEffect(() => {
     void loadData();
+    void initBills().then(setBills);
 
     const onUpdated = () => {
       setAppointments(getAppointments());

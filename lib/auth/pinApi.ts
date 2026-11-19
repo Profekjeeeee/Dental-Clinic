@@ -1,8 +1,6 @@
 import { supabase } from "@/lib/supabaseClient";
 
-export const PIN_MIN_LEN = 4;
-export const PIN_MAX_LEN = 6;
-export const PIN_AUTO_SUBMIT_LEN = 4;
+export const PIN_LENGTH = 4;
 
 export async function getAuthUserIdOrError(): Promise<{ userId: string } | { error: string }> {
   const { data, error } = await supabase.auth.getUser();
@@ -57,6 +55,7 @@ function parseVerifyPayload(raw: unknown): VerifyPinResult {
 }
 
 export async function rpcSetUserPin(pin: string): Promise<{ error?: string }> {
+  if (pin.length !== PIN_LENGTH || /\D/.test(pin)) return { error: "Введите ровно 4 цифры." };
   const auth = await getAuthUserIdOrError();
   if ("error" in auth) return { error: auth.error };
 

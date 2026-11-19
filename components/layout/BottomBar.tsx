@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import type { BottomTabId } from "@/types";
 import { ROUTES } from "@/lib/routes";
 import { useUpcomingCount } from "@/hooks/useUpcomingCount";
 import { FormulaToothIcon } from "@/components/icons/FormulaToothIcon";
-import { prefetchPatientCabinet } from "@/lib/patientCabinet";
 import { initAppointments } from "@/lib/appointments";
 import { initBills } from "@/lib/bills";
 import { getPatientPayments } from "@/lib/payments";
@@ -126,16 +125,16 @@ const TABS: {
 
 export default function BottomBar() {
   const pathname = usePathname();
-  const router = useRouter();
   const upcomingCount = useUpcomingCount();
 
-  const warmTab = (tabId: BottomTabId, href: string) => {
-    router.prefetch(href);
+  const warmTab = (tabId: BottomTabId) => {
     switch (tabId) {
       case "home":
+        void initBills();
+        void initAppointments();
+        break;
       case "appointments":
         void initAppointments();
-        void initBills();
         break;
       case "formula":
         void refreshDentalCaches();
@@ -145,7 +144,7 @@ export default function BottomBar() {
         void getPatientPayments();
         break;
       case "more":
-        prefetchPatientCabinet();
+        void import("@/lib/patientCabinet").then(({ prefetchPatientCabinet }) => prefetchPatientCabinet());
         break;
     }
   };
@@ -183,9 +182,9 @@ export default function BottomBar() {
                   href={tab.href}
                   prefetch={true}
                   className="interactive-press-sm flex w-full max-w-[4.5rem] flex-col items-center justify-center gap-0.5 py-1"
-                  onMouseEnter={() => warmTab(tab.id, tab.href)}
-                  onFocus={() => warmTab(tab.id, tab.href)}
-                  onTouchStart={() => warmTab(tab.id, tab.href)}
+                  onMouseEnter={() => warmTab(tab.id)}
+                  onFocus={() => warmTab(tab.id)}
+                  onTouchStart={() => warmTab(tab.id)}
                 >
                   <span
                     className={`relative flex items-center justify-center rounded-full px-2 py-1 transition-colors ${
