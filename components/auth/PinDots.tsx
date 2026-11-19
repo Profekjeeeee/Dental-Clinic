@@ -1,6 +1,6 @@
 "use client";
 
-import { PIN_MAX_LEN } from "@/lib/auth/pinApi";
+import { PIN_LENGTH } from "@/lib/auth/pinApi";
 
 type PinDotsProps = {
   length: number;
@@ -9,7 +9,7 @@ type PinDotsProps = {
 };
 
 export function PinDots({ length, filled, error }: PinDotsProps) {
-  const slots = Math.min(length, PIN_MAX_LEN);
+  const slots = Math.min(length, PIN_LENGTH);
   return (
     <div className="flex justify-center gap-3 mb-8" aria-hidden>
       {Array.from({ length: slots }).map((_, i) => (
