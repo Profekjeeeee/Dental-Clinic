@@ -65,8 +65,10 @@ async function safeEditMessage(params: {
 }) {
   try {
     await editTelegramMessage(params);
+    return true;
   } catch (e) {
     console.warn("[telegram/webhook] editTelegramMessage failed:", e);
+    return false;
   }
 }
 
@@ -218,14 +220,6 @@ export async function POST(request: Request) {
       text: alreadyConfirmed ? "Запись уже подтверждена" : "✅ Запись успешно подтверждена",
     });
 
-    if (!alreadyConfirmed) {
-      try {
-        await notifyDoctorPatientConfirmed(parsed.appointmentId);
-      } catch (e) {
-        console.warn("[telegram/webhook] notifyDoctorPatientConfirmed failed:", e);
-      }
-    }
-
     const cardText =
       `<b>✅ Запись успешно подтверждена</b>\n` +
       `Врач: ${doctorName}\n` +
@@ -233,22 +227,23 @@ export async function POST(request: Request) {
       `Время: ${timeRu}\n\n` +
       `До встречи в клинике!`;
 
-    if (chatId != null && messageId != null) {
-      await safeEditMessage({
-        chatId,
-        messageId,
-        text: cardText,
-        replyMarkup: appOpenKeyboard(),
-      });
-    }
-
-    await safeSendMessage({
-      chatId: replyChatId,
-      text: alreadyConfirmed
-        ? `<b>✅ Запись уже подтверждена</b>\nВрач: ${doctorName}\nДата: ${dateRu}\nВремя: ${timeRu}`
-        : `<b>✅ Запись успешно подтверждена</b>\nВрач: ${doctorName}\nДата: ${dateRu}\nВремя: ${timeRu}\n\nЖдём вас на приёме!`,
+    const edited = chatId != null && messageId != null && await safeEditMessage({
+      chatId,
+      messageId,
+      text: cardText,
       replyMarkup: appOpenKeyboard(),
     });
+    if (!edited) {
+      await safeSendMessage({ chatId: replyChatId, text: cardText, replyMarkup: appOpenKeyboard() });
+    }
+
+    if (!alreadyConfirmed) {
+      try {
+        await notifyDoctorPatientConfirmed(parsed.appointmentId);
+      } catch (e) {
+        console.warn("[telegram/webhook] notifyDoctorPatientConfirmed failed:", e);
+      }
+    }
 
     return NextResponse.json({ ok: true });
   }

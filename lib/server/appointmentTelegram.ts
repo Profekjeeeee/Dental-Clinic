@@ -180,7 +180,8 @@ export async function notifyDoctorNewBooking(appointmentId: string | number): Pr
     `<b>Новая запись!</b>\n` +
     `Пациент: ${patientName}\n` +
     `Дата: ${dateRu}\n` +
-    `Время: ${timeRu}`;
+    `Время: ${timeRu}\n` +
+    (apt.confirmed_at ? "Статус: подтверждена пациентом" : "Статус: ожидает подтверждения пациента");
 
   await safeSend(employee.telegram_id, text, appOpenKeyboard());
 }

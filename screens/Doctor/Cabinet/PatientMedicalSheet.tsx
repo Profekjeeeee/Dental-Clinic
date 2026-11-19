@@ -16,7 +16,7 @@ import {
   type DentalEmployeeRecord,
 } from "@/lib/auth";
 import { findOrCreatePrivateDoctorRoom, sendConsiliumCaseMessage } from "@/lib/doctorOrdinatorskayaChat";
-import { getAllClinicAppointments, initAppointments, type ClinicAppointment } from "@/lib/appointments";
+import { getAllClinicAppointments, initAppointments, refreshAppointmentsCache, type ClinicAppointment } from "@/lib/appointments";
 import {
   fetchTreatmentPlanItemsForPatient,
   getItemStatus,
@@ -280,6 +280,7 @@ export default function PatientMedicalSheet({
     const bumpClient = () => setClientRev((n) => n + 1);
     window.addEventListener("appointmentsUpdated", bumpApt);
     window.addEventListener("dentalClientsUpdated", bumpClient);
+    void refreshAppointmentsCache();
     return () => {
       window.removeEventListener("appointmentsUpdated", bumpApt);
       window.removeEventListener("dentalClientsUpdated", bumpClient);
@@ -306,7 +307,7 @@ export default function PatientMedicalSheet({
       contextAppointment &&
       appointmentMatchesPatientCalendarKey(contextAppointment, patientId)
     ) {
-      return contextAppointment;
+      return history.find((appointment) => appointment.id === contextAppointment.id) ?? contextAppointment;
     }
     return history[0] ?? null;
   }, [contextAppointment, patientId, history]);
@@ -448,7 +449,7 @@ export default function PatientMedicalSheet({
   const patientTitle = displayClient
     ? `${displayClient.lastName} ${displayClient.firstName}`.trim()
     : "Пациент";
-  const phoneLabel = displayClient?.phone ?? "—";
+  const phoneLabel = (profile ?? (client?.id === patientId.trim() ? client : null))?.phone?.trim();
 
   const consiliumColleagues = useMemo(() => {
     const me = getDentalSession()?.id;
@@ -576,7 +577,7 @@ export default function PatientMedicalSheet({
                 {patientTitle}
               </p>
               <p className="text-xs text-secondary mt-0.5 leading-snug">
-                <span className="font-mono text-[#0F172A]/85 dark:text-slate-200 break-all">{phoneLabel}</span>
+                <span className="font-mono text-[#0F172A]/85 dark:text-slate-200 break-all">{phoneLabel ? `Телефон пациента: ${phoneLabel}` : "Телефон пациента не загружен"}</span>
               </p>
             </div>
             <div className="min-w-0 flex flex-col items-end text-right">
@@ -588,7 +589,7 @@ export default function PatientMedicalSheet({
                   </p>
                   <p className="text-xs text-secondary mt-0.5 tabular-nums">{headerAppointment.time}</p>
                   <span className="mt-1 inline-flex max-w-full truncate rounded-md border border-primary/25 bg-white/80 dark:bg-slate-900/60 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                    {appointmentStatusLabelRu(headerAppointment.status)}
+                    {appointmentStatusLabelRu(headerAppointment.status, headerAppointment)}
                   </span>
                 </>
               ) : (
@@ -998,7 +999,7 @@ export default function PatientMedicalSheet({
                       {a.day} {a.month} {a.year}, {a.time}
                     </span>
                     <span className="text-[12px] font-medium px-2 py-0.5 rounded-lg bg-[#F1F5F9] dark:bg-slate-800 text-secondary shrink-0">
-                      {appointmentStatusLabelRu(a.status)}
+                      {appointmentStatusLabelRu(a.status, a)}
                     </span>
                   </div>
                   <p className="text-[13px] text-secondary mt-1">{a.service}</p>
