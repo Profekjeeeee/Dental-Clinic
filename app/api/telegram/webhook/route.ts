@@ -169,29 +169,10 @@ export async function POST(request: Request) {
 
   if (parsed.action === "confirm") {
     if (apt.status === "cancelled") {
-      if (chatId != null && messageId != null) {
-        await safeEditMessage({
-          chatId,
-          messageId,
-          text:
-            `<b>❌ Запись отменена</b>\n` +
-            `Приём у врача ${doctorName}\n` +
-            `Дата: ${dateRu}\n` +
-            `Время: ${timeRu}`,
-          replyMarkup: appOpenKeyboard(),
-        });
-      }
       await safeAnswerCallback({
         callbackQueryId: cq.id,
         text: "Запись уже была отменена",
         showAlert: true,
-      });
-      await safeSendMessage({
-        chatId: replyChatId,
-        text:
-          `<b>⚠️ Запись уже отменена</b>\n` +
-          `Приём у врача ${doctorName} (${dateRu}, ${timeRu}) был отменён ранее.`,
-        replyMarkup: appOpenKeyboard(),
       });
       return NextResponse.json({ ok: true });
     }
@@ -219,6 +200,8 @@ export async function POST(request: Request) {
       callbackQueryId: cq.id,
       text: alreadyConfirmed ? "Запись уже подтверждена" : "✅ Запись успешно подтверждена",
     });
+
+    if (alreadyConfirmed) return NextResponse.json({ ok: true });
 
     const cardText =
       `<b>✅ Запись успешно подтверждена</b>\n` +
@@ -250,24 +233,7 @@ export async function POST(request: Request) {
 
   // parsed.action === "cancel"
   if (apt.status === "cancelled") {
-    if (chatId != null && messageId != null) {
-      await safeEditMessage({
-        chatId,
-        messageId,
-        text:
-          `<b>❌ Запись отменена</b>\n` +
-          `Приём у врача ${doctorName}\n` +
-          `Дата: ${dateRu}\n` +
-          `Время: ${timeRu}`,
-        replyMarkup: appOpenKeyboard(),
-      });
-    }
     await safeAnswerCallback({ callbackQueryId: cq.id, text: "Запись уже отменена" });
-    await safeSendMessage({
-      chatId: replyChatId,
-      text: `<b>❌ Запись уже отменена</b>\nПриём у врача ${doctorName} (${dateRu}, ${timeRu}).`,
-      replyMarkup: appOpenKeyboard(),
-    });
     return NextResponse.json({ ok: true });
   }
 
@@ -323,20 +289,19 @@ export async function POST(request: Request) {
     `Время: ${timeRu}\n\n` +
     `Время освобождено. Чтобы записаться снова — откройте приложение.`;
 
-  if (chatId != null && messageId != null) {
-    await safeEditMessage({
-      chatId,
-      messageId,
+  const edited = chatId != null && messageId != null && await safeEditMessage({
+    chatId,
+    messageId,
+    text: cancelledText,
+    replyMarkup: appOpenKeyboard(),
+  });
+  if (!edited) {
+    await safeSendMessage({
+      chatId: replyChatId,
       text: cancelledText,
       replyMarkup: appOpenKeyboard(),
     });
   }
-
-  await safeSendMessage({
-    chatId: replyChatId,
-    text: cancelledText,
-    replyMarkup: appOpenKeyboard(),
-  });
 
   return NextResponse.json({ ok: true });
 }
