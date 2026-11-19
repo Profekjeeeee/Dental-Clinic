@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 
 function verifyWebhookSecret(request: Request): boolean {
   const expected = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
-  if (!expected) return true;
+  if (!expected) return false;
   const headerSecret = request.headers.get("x-telegram-bot-api-secret-token")?.trim();
   if (headerSecret && headerSecret === expected) return true;
   const url = new URL(request.url);
@@ -143,6 +143,19 @@ export async function POST(request: Request) {
       text: "⚠️ Не удалось найти эту запись. Проверьте список записей в приложении.",
       replyMarkup: appOpenKeyboard(),
     });
+    return NextResponse.json({ ok: true });
+  }
+
+  const { data: patient, error: patientError } = await sb
+    .from("dental_clients")
+    .select("telegram_id")
+    .eq("id", apt.client_id)
+    .eq("clinic_id", apt.clinic_id)
+    .maybeSingle();
+  if (patientError) return NextResponse.json({ error: "Ошибка проверки записи." }, { status: 503 });
+  if (!patient?.telegram_id || String(patient.telegram_id) !== String(cq.from.id) ||
+      !apt.confirmation_tg_message_id || String(apt.confirmation_tg_message_id) !== String(cq.message?.message_id)) {
+    await safeAnswerCallback({ callbackQueryId: cq.id, text: "Кнопка больше недоступна.", showAlert: true });
     return NextResponse.json({ ok: true });
   }
 

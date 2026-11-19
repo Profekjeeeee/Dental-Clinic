@@ -126,20 +126,28 @@ export async function updateChatMessage(
   messageId: string,
   text: string,
 ) {
-  requireActor(ctx.actor);
+  const actor = requireActor(ctx.actor);
+  const profile = actor.role === "client"
+    ? await loadClient(ctx.adm, actor, ctx.gate)
+    : await loadEmployee(ctx.adm, actor, ctx.gate);
+  const clinicId = safeDentalScalarId(profile.clinic_id, "clinic");
   const id = safeDentalScalarId(messageId, "message");
   const { error } = await ctx.adm
     .from("chat_messages")
     .update({ text, updated_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id).eq("clinic_id", clinicId).eq("sender_id", actor.id);
   if (error) throw error;
   return { ok: true as const };
 }
 
 export async function deleteChatMessage(ctx: DentalServiceContext, messageId: string) {
-  requireActor(ctx.actor);
+  const actor = requireActor(ctx.actor);
+  const profile = actor.role === "client"
+    ? await loadClient(ctx.adm, actor, ctx.gate)
+    : await loadEmployee(ctx.adm, actor, ctx.gate);
+  const clinicId = safeDentalScalarId(profile.clinic_id, "clinic");
   const id = safeDentalScalarId(messageId, "message");
-  const { error } = await ctx.adm.from("chat_messages").delete().eq("id", id);
+  const { error } = await ctx.adm.from("chat_messages").delete().eq("id", id).eq("clinic_id", clinicId).eq("sender_id", actor.id);
   if (error) throw error;
   return { ok: true as const };
 }

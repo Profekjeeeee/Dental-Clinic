@@ -28,8 +28,10 @@ const DashboardAppointmentsChart = dynamic(
 
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {
   done: { label: "Выполнено", cls: "bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400" },
-  current: { label: "Сейчас", cls: "bg-primary-light text-primary" },
-  upcoming: { label: "Ожидает", cls: "bg-primary/10 text-primary" },
+  cancelled: { label: "Отменён", cls: "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300" },
+  rescheduled: { label: "Перенесён", cls: "bg-primary-light text-primary" },
+  pending: { label: "Ожидает", cls: "bg-primary/10 text-primary" },
+  upcoming: { label: "Запланирован", cls: "bg-primary/10 text-primary" },
 };
 
 function formatRub(n: number): string {
@@ -41,7 +43,7 @@ function buildStatCards(stats: DashboardStats, analytics: AnalyticsOverview | nu
     {
       label: "Выручка, ₽",
       value: formatRub(stats.revenueMonth),
-      sub: `${stats.paymentsMonth} оплат · из payments`,
+      sub: `${stats.paymentsMonth} оплат`,
       color: "bg-primary-light",
       textColor: "text-primary",
       href: "/screens/admin/finance",
@@ -57,7 +59,7 @@ function buildStatCards(stats: DashboardStats, analytics: AnalyticsOverview | nu
     {
       label: "Пациентов",
       value: analytics ? String(analytics.totalPatients) : "—",
-      sub: analytics ? `+${analytics.newPatientsMonth} новых · ${analytics.atRiskCount} at risk` : "аналитика",
+      sub: analytics ? `+${analytics.newPatientsMonth} новых · ${analytics.atRiskCount} требуют внимания` : "аналитика",
       color: "bg-slate-100 dark:bg-slate-800",
       textColor: "text-[#0F172A] dark:text-white",
       href: "/screens/admin/analytics",
@@ -100,17 +102,28 @@ export default function AdminDashboardPage() {
 
   const loadDashboard = useCallback(async () => {
     setDashLoading(true);
-    const [res, analyticsRes] = await Promise.all([getDashboardStats(), fetchAnalyticsOverview()]);
-    setStats(res.stats);
-    setChart(res.chart);
-    setToday(res.today);
-    setAnalytics(analyticsRes.overview);
-    setDashError(res.error ?? analyticsRes.error ?? "");
-    setDashLoading(false);
+    try {
+      const res = await getDashboardStats();
+      setStats(res.stats);
+      setChart(res.chart);
+      setToday(res.today);
+      setDashError(res.error ?? "");
+    } catch {
+      setDashError("Не удалось загрузить расписание");
+    } finally {
+      setDashLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     void loadDashboard();
+    let active = true;
+    void fetchAnalyticsOverview().then((res) => {
+      if (active) setAnalytics(res.overview);
+    }).catch(() => {
+      if (active) setAnalytics(null);
+    });
+    return () => { active = false; };
   }, [loadDashboard]);
 
   const handleLogout = () => {
@@ -124,7 +137,7 @@ export default function AdminDashboardPage() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[12px] font-medium text-secondary uppercase tracking-widest mb-1">Панель администратора</p>
-            <h1 className="text-[24px] font-bold text-[#0F172A] dark:text-white">Дашборд</h1>
+            <h1 className="text-[24px] font-bold text-[#0F172A] dark:text-white">Сегодня</h1>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <ThemeToggleButton sizeClass="w-9 h-9" />
@@ -142,63 +155,39 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        <Link
-          href={ROUTES.adminAnalytics}
-          className="interactive-press-sm mt-4 flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary-light/60 px-4 py-3 dark:border-primary/30 dark:bg-primary/10"
-        >
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white dark:bg-slate-900 text-primary">
-            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path d="M4 19V5M4 19H20M4 19L8 15M20 19V9M20 9H8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[14px] font-semibold text-[#0F172A] dark:text-white">KPI и аналитика</span>
-            <span className="block text-[12px] text-secondary">Врачи · пациенты · экспорт CSV</span>
-          </span>
-          <span className="text-primary text-[13px] font-semibold shrink-0">Открыть</span>
-        </Link>
-
-        <Link
-          href={ROUTES.adminLogs}
-          className="interactive-press-sm mt-4 flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary-light/60 px-4 py-3 dark:border-primary/30 dark:bg-primary/10"
-        >
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white dark:bg-slate-900 text-primary">
-            <ScrollText className="h-5 w-5" aria-hidden />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[14px] font-semibold text-[#0F172A] dark:text-white">Логи системы</span>
-            <span className="block text-[12px] text-secondary">Supabase · фильтр по уровню · экспорт JSON</span>
-          </span>
-          <span className="text-primary text-[13px] font-semibold shrink-0">Открыть</span>
-        </Link>
-
-        <Link
-          href={ROUTES.adminSettings}
-          className="interactive-press-sm mt-3 flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary-light/60 px-4 py-3 dark:border-primary/30 dark:bg-primary/10"
-        >
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white dark:bg-slate-900 text-primary">
-            <Settings className="h-5 w-5" aria-hidden />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[14px] font-semibold text-[#0F172A] dark:text-white">Настройки клиники</span>
-            <span className="block text-[12px] text-secondary">Брендинг · контакты · цвет</span>
-          </span>
-          <span className="text-primary text-[13px] font-semibold shrink-0">Открыть</span>
-        </Link>
-
-        <Link
-          href={ROUTES.adminAudit}
-          className="interactive-press-sm mt-3 flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary-light/60 px-4 py-3 dark:border-primary/30 dark:bg-primary/10"
-        >
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white dark:bg-slate-900 text-primary">
-            <ShieldCheck className="h-5 w-5" aria-hidden />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[14px] font-semibold text-[#0F172A] dark:text-white">Audit Trail</span>
-            <span className="block text-[12px] text-secondary">Мед. данные · кто изменил · diff</span>
-          </span>
-          <span className="text-primary text-[13px] font-semibold shrink-0">Открыть</span>
-        </Link>
+      </div>
+      <div className="px-5">
+        <h2 className="text-[16px] font-bold text-[#0F172A] dark:text-white mb-3">Расписание на сегодня</h2>
+        <div className="flex flex-col gap-2">
+          {dashLoading ? (
+            <p className="text-[13px] text-secondary py-6 text-center">Загрузка расписания…</p>
+          ) : dashError && today.length === 0 ? (
+            <button type="button" className="min-h-11 text-primary" onClick={() => void loadDashboard()}>Повторить загрузку</button>
+          ) : today.length === 0 ? (
+            <p className="text-[13px] text-secondary py-6 text-center">На сегодня записей нет</p>
+          ) : (
+            today.map((a) => {
+              const { label, cls } = STATUS_MAP[a.status] ?? STATUS_MAP.upcoming;
+              return (
+                <div
+                  key={a.id}
+                  className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+                >
+                  <div className="min-w-[44px] text-center">
+                    <span className="text-[15px] font-bold text-[#0F172A] dark:text-white">{a.time}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] font-semibold text-[#0F172A] dark:text-white truncate">{a.patient}</p>
+                    <p className="text-[12px] text-secondary truncate">
+                      {a.doctor} · {a.procedure}
+                    </p>
+                  </div>
+                  <span className={`text-[11px] font-medium px-2 py-1 rounded-lg shrink-0 ${cls}`}>{label}</span>
+                </div>
+              );
+            })
+          )}
+        </div>
       </div>
 
       {dashError ? (
@@ -250,39 +239,7 @@ export default function AdminDashboardPage() {
         </ChartCard>
       </div>
 
-      <div className="px-5">
-        <h2 className="text-[16px] font-bold text-[#0F172A] dark:text-white mb-3">Расписание на сегодня</h2>
-        <div className="flex flex-col gap-2">
-          {dashLoading ? (
-            <p className="text-[13px] text-secondary py-6 text-center">Загрузка расписания…</p>
-          ) : today.length === 0 ? (
-            <p className="text-[13px] text-secondary py-6 text-center">На сегодня записей нет</p>
-          ) : (
-            today.map((a) => {
-              const { label, cls } = STATUS_MAP[a.status] ?? STATUS_MAP.upcoming;
-              return (
-                <div
-                  key={a.id}
-                  className={`rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 flex items-start gap-3 shadow-[0_4px_16px_rgba(15,23,42,0.06)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.32)] ${
-                    a.status === "current" ? "ring-1 ring-primary" : ""
-                  }`}
-                >
-                  <div className="min-w-[44px] text-center">
-                    <span className="text-[15px] font-bold text-[#0F172A] dark:text-white">{a.time}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[14px] font-semibold text-[#0F172A] dark:text-white truncate">{a.patient}</p>
-                    <p className="text-[12px] text-secondary truncate">
-                      {a.doctor} · {a.procedure}
-                    </p>
-                  </div>
-                  <span className={`text-[11px] font-medium px-2 py-1 rounded-lg shrink-0 ${cls}`}>{label}</span>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
+
     </main>
   );
 }

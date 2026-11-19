@@ -6,7 +6,6 @@ import {
 } from "@/lib/appointmentCancellation";
 import { buildTimeSlotsFromConfig } from "@/lib/clinic/bookingSlots";
 import { DEFAULT_CLINIC_SETTINGS } from "@/lib/clinic/defaults";
-import { formatErrorMessage } from "@/lib/formatErrorMessage";
 import { supabase } from "@/lib/supabaseClient";
 import {
   DENTAL_USER_SESSION_STORAGE_KEY,
@@ -122,12 +121,6 @@ interface AppointmentRow {
   visit_mode?: string | null;
   confirmed_at?: string | null;
   comment?: string | null;
-}
-
-function isoDateLocal(year: number, monthNum: number, day: number): string {
-  const mm = String(monthNum).padStart(2, "0");
-  const dd = String(day).padStart(2, "0");
-  return `${year}-${mm}-${dd}`;
 }
 
 function rowToAppointment(row: AppointmentRow): Appointment {
@@ -422,50 +415,23 @@ export async function addAppointment(apt: NewAppointmentInput): Promise<Appointm
   const status: AppointmentStatus = apt.status ?? "pending";
   const name = apt.doctorName.trim() || "Врач";
 
-  const clientId = await resolveDentalClientPrimaryKeyForInsert(apt.clientPhone);
-
-  try {
-    const { row } = await dentalApiFetch<{ row: AppointmentRow }>("/api/appointments", {
-      method: "POST",
-      body: {
-        day: apt.day,
-        monthNum: apt.monthNum,
-        year: apt.year,
-        time: apt.time,
-        doctorName: name,
-        status,
-        clientPhone: apt.clientPhone ?? undefined,
-        visitMode: apt.visitMode ?? "in_person",
-        service: apt.service,
-        price: apt.price,
-      },
-    });
-    await refreshAppointmentsCache(true);
-    return rowToAppointment(row);
-  } catch (apiErr) {
-    const { data, error } = await supabase
-      .from("appointments")
-      .insert([
-        {
-          client_id: clientId,
-          doctor_name: name,
-          appointment_date: isoDateLocal(apt.year, apt.monthNum, apt.day),
-          appointment_time: apt.time,
-          status,
-          visit_mode: apt.visitMode ?? "in_person",
-          ...(apt.service ? { service: apt.service } : {}),
-          ...(apt.price != null ? { price: apt.price } : {}),
-        },
-      ])
-      .select("*")
-      .single();
-
-    if (error) {
-      throw apiErr instanceof Error ? apiErr : new Error(formatErrorMessage(error));
-    }
-    await refreshAppointmentsCache(true);
-    return rowToAppointment(data as AppointmentRow);
-  }
+  const { row } = await dentalApiFetch<{ row: AppointmentRow }>("/api/appointments", {
+    method: "POST",
+    body: {
+      day: apt.day,
+      monthNum: apt.monthNum,
+      year: apt.year,
+      time: apt.time,
+      doctorName: name,
+      status,
+      clientPhone: apt.clientPhone ?? undefined,
+      visitMode: apt.visitMode ?? "in_person",
+      service: apt.service,
+      price: apt.price,
+    },
+  });
+  await refreshAppointmentsCache(true);
+  return rowToAppointment(row);
 }
 
 export function getAllClinicAppointments(): ClinicAppointment[] {
@@ -473,12 +439,7 @@ export function getAllClinicAppointments(): ClinicAppointment[] {
 }
 
 export async function cancelAppointment(id: string): Promise<void> {
-  try {
     await dentalApiFetch(`/api/appointments/${encodeURIComponent(id)}`, { method: "POST" });
-  } catch {
-    const { error } = await supabase.from("appointments").update({ status: "cancelled" }).eq("id", id);
-    if (error) throw error;
-  }
   await refreshAppointmentsCache(true);
 }
 
@@ -486,7 +447,6 @@ export async function rescheduleAppointment(
   id: string,
   updates: Pick<Appointment, "day" | "monthNum" | "month" | "year" | "time">
 ): Promise<void> {
-  try {
     await dentalApiFetch(`/api/appointments/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: {
@@ -496,17 +456,6 @@ export async function rescheduleAppointment(
         time: updates.time,
       },
     });
-  } catch {
-    const { error } = await supabase
-      .from("appointments")
-      .update({
-        appointment_date: isoDateLocal(updates.year, updates.monthNum, updates.day),
-        appointment_time: updates.time,
-        status: "scheduled",
-      })
-      .eq("id", id);
-    if (error) throw error;
-  }
   await refreshAppointmentsCache(true);
 }
 

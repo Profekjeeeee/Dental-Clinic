@@ -51,7 +51,7 @@ export function telegramMatchesRowTelegram(
   const want = gate.telegramUserId;
   const storedRaw = row?.telegram_id;
   const stored = storedRaw == null ? "" : String(storedRaw).trim();
-  if (!stored) return true;
+  if (!stored) return false;
   return stored === want;
 }
 
@@ -69,6 +69,7 @@ export async function loadEmployee(
   if (error) apiError(500, error.message);
   if (!data || typeof data !== "object") apiError(403, "Сессия не сопоставлена с записью сотрудника.");
   const row = data as Record<string, unknown>;
+  if (row.role !== actor.role) apiError(403, "Роль сотрудника не совпадает.");
   if (!phonesMatch(actor.phone, String(row.phone ?? ""))) apiError(403, "Несовпадение телефона сессии с данными базы.");
   if (!telegramMatchesRowTelegram(row as { telegram_id?: unknown }, gate)) {
     apiError(403, "Telegram аккаунт не привязан к записи этого сотрудника.");
@@ -224,16 +225,20 @@ export async function assertAppointmentAccessOrThrow(
 ): Promise<void> {
   const { data, error } = await ctx.adm
     .from("appointments")
-    .select("client_id")
+    .select("client_id, clinic_id, doctor_id")
     .eq("id", appointmentPk)
     .maybeSingle();
   if (error) apiError(500, error.message);
-  const ap = data as { client_id?: string | null } | null;
+  const ap = data as { client_id?: string | null; clinic_id?: string; doctor_id?: string | null } | null;
   if (!ap?.client_id) apiError(404, "Нет строки записи.");
 
   const act = requireActor(ctx.actor);
   if (act.role === "doctor" || act.role === "admin") {
-    await loadEmployee(ctx.adm, act, ctx.gate);
+    const employee = await loadEmployee(ctx.adm, act, ctx.gate);
+    if (!ap.clinic_id || employee.clinic_id !== ap.clinic_id ||
+        (act.role === "doctor" && ap.doctor_id !== act.id)) {
+      apiError(403, "Запись недоступна.");
+    }
     return;
   }
   const meRow = await loadClient(ctx.adm, act, ctx.gate);

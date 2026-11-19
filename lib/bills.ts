@@ -7,8 +7,6 @@ import { supabase } from "@/lib/supabaseClient";
 
 export type { Bill };
 
-const LEGACY_BASE_KEY = "dental_bills";
-const MIGRATION_FLAG = "bills_migrated_to_supabase_v1";
 
 interface BillRow {
   id: string;
@@ -27,15 +25,6 @@ interface BillRow {
   paid_at: string | null;
   created_at: string;
   updated_at: string;
-}
-
-function legacyStorageKey(uid?: string | null): string {
-  const id = uid ?? getCurrentUserId();
-  return id ? `${LEGACY_BASE_KEY}_${id}` : LEGACY_BASE_KEY;
-}
-
-function migrationFlagKey(uid: string): string {
-  return `${MIGRATION_FLAG}_${uid}`;
 }
 
 function getClientSubjectIdForFilters(): string | null {
@@ -142,67 +131,6 @@ async function resolvePatientIdForWrite(): Promise<string | null> {
   return resolveClientIdForAppointment();
 }
 
-async function migrateBillsFromLocalStorage(): Promise<void> {
-  if (typeof window === "undefined") return;
-
-  const quickUid = getClientSubjectIdForFilters();
-  if (quickUid && localStorage.getItem(migrationFlagKey(quickUid))) return;
-
-  const patientId = quickUid ?? (await resolvePatientIdForWrite());
-  if (!patientId) return;
-
-  const flagKey = migrationFlagKey(patientId);
-  if (localStorage.getItem(flagKey)) return;
-
-  const keys = [legacyStorageKey(patientId), legacyStorageKey(null)];
-  let raw: string | null = null;
-  for (const key of keys) {
-    raw = localStorage.getItem(key);
-    if (raw) break;
-  }
-
-  if (!raw) {
-    localStorage.setItem(flagKey, "1");
-    return;
-  }
-
-  let legacyBills: Bill[] = [];
-  try {
-    legacyBills = JSON.parse(raw) as Bill[];
-  } catch {
-    localStorage.setItem(flagKey, "1");
-    return;
-  }
-
-  for (const bill of legacyBills) {
-    const { error } = await supabase.from("bills").insert([
-      {
-        patient_id: bill.patientId || patientId,
-        appointment_id: bill.appointmentId ?? null,
-        amount: bill.totalAmount,
-        paid_amount: bill.paidAmount,
-        status: bill.status,
-        description: bill.items[0]?.service ?? "Медицинская услуга",
-        bill_number: bill.number,
-        metadata: {
-          items: bill.items,
-          can_pay_online: bill.canPayOnline,
-        },
-        paid_at: bill.paidAt ?? null,
-      },
-    ]);
-
-    if (error) {
-      console.error("[bills] migrate", error);
-    }
-  }
-
-  for (const key of keys) {
-    localStorage.removeItem(key);
-  }
-  localStorage.setItem(flagKey, "1");
-}
-
 export async function initBills(): Promise<Bill[]> {
   if (hasBillsCache()) {
     if (Date.now() - lastBillsFetchedAt >= BILLS_STALE_TTL_MS) {
@@ -210,7 +138,6 @@ export async function initBills(): Promise<Bill[]> {
     }
     return getBills();
   }
-  await migrateBillsFromLocalStorage();
   await refreshBillsCache(false);
   return getBills();
 }

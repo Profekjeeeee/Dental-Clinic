@@ -39,7 +39,6 @@ import { ROUTES } from "@/lib/routes";
 import { canJoinVideoWindow } from "@/lib/videoConsultation";
 import { FormulaToothIcon } from "@/components/icons/FormulaToothIcon";
 import { usePatientUnreadCount } from "@/hooks/usePatientUnreadCount";
-import { prefetchPatientCabinet } from "@/lib/patientCabinet";
 
 const DAILY_TIPS = [
   "Использование ирригатора снижает риск воспаления дёсен на 40%.",
@@ -120,18 +119,6 @@ export default function MainPage() {
     };
     syncHelloName();
 
-    prefetchPatientCabinet();
-
-    void Promise.all([initAppointments(), initPlanSources(), initBills()])
-      .then(() => {
-        setNextApt(getNextAppointment());
-        setUpcomingCount(getUpcomingCount());
-        setPlanStats(getMergedPlanStats());
-        setPendingAmount(getTotalPending(getBills()));
-      })
-      .finally(() => {
-        setLoading(false);
-      });
 
     const updateAppointments = () => {
       setNextApt(getNextAppointment());
@@ -146,6 +133,12 @@ export default function MainPage() {
       setPlanStats(getMergedPlanStats());
     };
 
+    let active = true;
+    void initAppointments().then(() => { if (active) updateAppointments(); })
+      .finally(() => { if (active) setLoading(false); });
+    void initBills().then(() => { if (active) updateBills(); });
+    void initPlanSources().then(() => { if (active) updatePlan(); });
+
     const onStorage = () => {
       updateAppointments();
       updateBills();
@@ -154,7 +147,7 @@ export default function MainPage() {
     };
 
     const syncFresh = () => {
-      void Promise.all([refreshAppointmentsCache(true), refreshBillsCache(true)]);
+      void Promise.all([refreshAppointmentsCache(), refreshBillsCache()]);
     };
     const onFocus = () => syncFresh();
     const onVisibility = () => {
@@ -188,6 +181,7 @@ export default function MainPage() {
       window.removeEventListener("profileUpdated", syncHelloName);
       window.removeEventListener(DENTAL_SESSION_CHANGED_EVENT, syncHelloName);
       window.removeEventListener("storage", onStorage);
+      active = false;
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
       clearInterval(livePoll);
@@ -214,9 +208,9 @@ export default function MainPage() {
   );
 
   return (
-    <div className="min-h-dvh bg-surface dark:bg-app-canvas pb-safe">
+    <div className="patient-home min-h-dvh bg-surface dark:bg-app-canvas pb-safe">
       {/* Шапка приветствия */}
-      <header className="px-5 pt-[calc(env(safe-area-inset-top,0px)+1.5rem)] pb-2 max-w-[480px] mx-auto">
+      <header className="px-5 pt-[calc(env(safe-area-inset-top,0px)+1.5rem)] pb-2 max-w-[480px] md:max-w-[880px] mx-auto">
         {currentDateStr && (
           <p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">
             {currentDateStr}
@@ -227,7 +221,8 @@ export default function MainPage() {
         </h1>
       </header>
 
-      <main className="px-5 py-3 flex flex-col gap-3.5 max-w-[480px] mx-auto">
+      <main className="px-5 py-3 grid grid-cols-1 gap-3.5 max-w-[480px] md:max-w-[880px] md:grid-cols-2 md:items-start mx-auto">
+        <div className="contents md:flex md:min-w-0 md:flex-col md:gap-3.5">
         {/* Ближайшая запись */}
         {loading ? (
           <div className="h-36 rounded-2xl bg-slate-200/60 dark:bg-slate-800/60 animate-pulse" />
@@ -412,6 +407,8 @@ export default function MainPage() {
           </Card>
         )}
 
+        </div>
+        <div className="contents md:flex md:min-w-0 md:flex-col md:gap-3.5">
         {/* Компактный индикатор плана лечения (подробности — в «Кабинете» и на странице плана) */}
         {planStats.total > 0 && (
           <Card>
@@ -468,6 +465,7 @@ export default function MainPage() {
             Рекомендации по уходу
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
+        </div>
         </div>
       </main>
 

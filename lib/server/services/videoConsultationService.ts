@@ -1,4 +1,5 @@
 import "server-only";
+import { parseClinicAppointmentTime } from "@/lib/server/clinicAppointmentTime";
 
 import { apiError } from "@/lib/server/api/apiError";
 import {
@@ -42,22 +43,9 @@ interface AppointmentJoinRow {
 const JOIN_WINDOW_BEFORE_MIN = 15;
 const JOIN_WINDOW_AFTER_MIN = 120;
 
-function parseAppointmentDateTime(date: string, time: string): Date | null {
-  const t = time.trim();
-  const match = t.match(/^(\d{1,2}):(\d{2})/);
-  if (!match) return null;
-  const hh = parseInt(match[1]!, 10);
-  const mm = parseInt(match[2]!, 10);
-  const parts = date.split("-").map((x) => parseInt(x, 10));
-  if (parts.length < 3) return null;
-  const [year, month, day] = parts;
-  if (!year || !month || !day) return null;
-  return new Date(year, month - 1, day, hh, mm, 0, 0);
-}
-
 export function isWithinConsultationWindow(apt: AppointmentJoinRow, now = new Date()): boolean {
-  const start = parseAppointmentDateTime(apt.appointment_date, apt.appointment_time);
-  if (!start) return true;
+  const start = parseClinicAppointmentTime(apt.appointment_date, apt.appointment_time);
+  if (!Number.isFinite(start.getTime())) return false;
   const ms = now.getTime() - start.getTime();
   return ms >= -JOIN_WINDOW_BEFORE_MIN * 60_000 && ms <= JOIN_WINDOW_AFTER_MIN * 60_000;
 }

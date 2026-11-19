@@ -8,7 +8,7 @@ type IconProps = { active: boolean };
 const ADMIN_TABS: { id: string; label: string; href: string; icon: React.FC<IconProps> }[] = [
   {
     id: "dashboard",
-    label: "Дашборд",
+    label: "Сегодня",
     href: "/screens/admin/dashboard",
     icon: ({ active }) => (
       <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -83,106 +83,6 @@ const ADMIN_TABS: { id: string; label: string; href: string; icon: React.FC<Icon
     ),
   },
   {
-    id: "feed",
-    label: "Лента",
-    href: "/screens/admin/feed",
-    icon: ({ active }) => (
-      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <rect
-          x="3"
-          y="3"
-          width="18"
-          height="4"
-          rx="2"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          fill={active ? "currentColor" : "none"}
-          fillOpacity={active ? 0.12 : undefined}
-        />
-        <rect
-          x="3"
-          y="10"
-          width="18"
-          height="4"
-          rx="2"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          fill={active ? "currentColor" : "none"}
-          fillOpacity={active ? 0.12 : undefined}
-        />
-        <rect
-          x="3"
-          y="17"
-          width="11"
-          height="4"
-          rx="2"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          fill={active ? "currentColor" : "none"}
-          fillOpacity={active ? 0.12 : undefined}
-        />
-      </svg>
-    ),
-  },
-  {
-    id: "doctors",
-    label: "Врачи",
-    href: "/screens/admin/doctors",
-    icon: ({ active }) => (
-      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <circle
-          cx="12"
-          cy="8"
-          r="4"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          fill={active ? "currentColor" : "none"}
-          fillOpacity={active ? 0.12 : undefined}
-        />
-        <path
-          d="M4 20C4 17 7.58172 14 12 14C16.4183 14 20 17 20 20"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-        <path
-          d="M17 11V15M15 13H19"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-      </svg>
-    ),
-  },
-  {
-    id: "crm",
-    label: "CRM",
-    href: "/screens/admin/crm",
-    icon: ({ active }) => (
-      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <path
-          d="M12 2C8.5 2 6 4.5 6 8C6 11.5 8.5 14 12 14C15.5 14 18 11.5 18 8C18 4.5 15.5 2 12 2Z"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          fill={active ? "currentColor" : "none"}
-          fillOpacity={active ? 0.12 : undefined}
-        />
-        <path
-          d="M3 20C3 16.5 7 14 12 14C17 14 21 16.5 21 20"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-        <path
-          d="M17 6L19 8M19 6L17 8"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-      </svg>
-    ),
-  },
-  {
     id: "finance",
     label: "Финансы",
     href: "/screens/admin/finance",
@@ -214,43 +114,24 @@ const ADMIN_TABS: { id: string; label: string; href: string; icon: React.FC<Icon
     ),
   },
   {
-    id: "price",
-    label: "Прайс",
-    href: "/screens/admin/price",
-    icon: ({ active }) => (
-      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <path
-          d="M6 2H18C18.5523 2 19 2.44772 19 3V22L16 20L13 22L10 20L7 22L5 21V3C5 2.44772 5.44772 2 6 2Z"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-          fill={active ? "currentColor" : "none"}
-          fillOpacity={active ? 0.1 : undefined}
-        />
-        <path
-          d="M9 9H15M9 13H13"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-      </svg>
-    ),
+    id: "more",
+    label: "Ещё",
+    href: "/screens/admin/more",
+    icon: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>,
   },
 ];
 
 export default function AdminBottomBar() {
   const pathname = usePathname();
 
-  const isActive = (href: string) =>
-    href === "/screens/admin/dashboard"
-      ? pathname === "/screens/admin/dashboard"
-      : href === "/screens/admin/messages"
-        ? pathname.startsWith("/screens/admin/messages")
-        : pathname.startsWith(href);
+  const isActive = (href: string) => href.endsWith("/more")
+    ? !ADMIN_TABS.some((tab) => tab.id !== "more" &&
+        (pathname === tab.href || pathname.startsWith(tab.href + "/")))
+    : pathname === href || pathname.startsWith(href + "/");
 
   return (
     <nav
-      className="pointer-events-none fixed bottom-0 left-0 right-0 z-50 flex justify-center px-4 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]"
+      className="admin-navigation pointer-events-none fixed bottom-0 left-0 right-0 z-50 flex justify-center px-4 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]"
       aria-label="Навигация админки"
     >
       <div
@@ -264,6 +145,8 @@ export default function AdminBottomBar() {
               <li key={tab.id} className="flex min-w-0 flex-1 justify-center">
                 <Link
                   href={tab.href}
+                  prefetch={true}
+                  aria-current={active ? "page" : undefined}
                   className="interactive-press-sm flex w-full max-w-[4.5rem] flex-col items-center justify-center gap-0.5 py-1"
                 >
                   <span
@@ -284,7 +167,7 @@ export default function AdminBottomBar() {
                     </span>
                   </span>
                   <span
-                    className={`max-w-full truncate text-center text-[10px] font-medium leading-none tracking-tight ${
+                    className={`text-center text-[12px] font-medium leading-none tracking-tight ${
                       active
                         ? "text-[#248bcf] dark:text-primary"
                         : "text-zinc-600 dark:text-slate-500"

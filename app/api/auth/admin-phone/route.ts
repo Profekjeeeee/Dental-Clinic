@@ -10,17 +10,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Supabase не настроен." }, { status: 503 });
   }
 
-  let body: { phone?: unknown };
+  let body: { phone?: unknown; initData?: unknown };
   try {
-    body = (await req.json()) as { phone?: unknown };
+    body = (await req.json()) as { phone?: unknown; initData?: unknown };
   } catch {
     return NextResponse.json({ ok: false, error: "Некорректный JSON." }, { status: 400 });
   }
 
-  const phone = typeof body.phone === "string" ? body.phone : "";
+  const phone = typeof body?.phone === "string" ? body.phone : "";
 
   try {
-    const session = await loginEmployeeByPhone(phone, "admin");
+    const session = await loginEmployeeByPhone(phone, "admin", body?.initData);
     return NextResponse.json({ ok: true, session });
   } catch (e) {
     if (e instanceof EmployeePhoneLoginError) {

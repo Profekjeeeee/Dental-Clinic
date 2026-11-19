@@ -238,7 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void (async () => {
       if (cancelled || bootstrapGen !== loginGenerationRef.current) return;
 
-      const { data } = await supabase.auth.getSession();
+      const { data } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
       const uid = data.session?.user?.id ?? null;
       const dental = getDentalSession();
 
@@ -328,7 +328,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (phone: string, role: "admin" | "doctor"): Promise<SignInResult> => {
       await prepareFreshSignIn();
       const endpoint = role === "admin" ? "/api/auth/admin-phone" : "/api/auth/doctor-phone";
-      const res = await postAuthJson(endpoint, { phone: normalizePhone(phone) });
+      const res = await postAuthJson(endpoint, { phone: normalizePhone(phone), initData: getTelegramInitData() });
       if (!res.ok) return { error: res.error };
       if (!res.session) return { error: "Пустой ответ сервера." };
       return afterSessionPayload(res.session);

@@ -17,21 +17,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export async function listAppointments(ctx: DentalServiceContext) {
   const { adm, gate, actor } = ctx;
 
-  if (!actor?.id) {
-    const { data, error } = await adm
-      .from("appointments")
-      .select("*")
-      .order("appointment_date", { ascending: true })
-      .order("appointment_time", { ascending: true });
-    if (error) throw error;
-    return { rows: data ?? [] };
-  }
+  if (!actor?.id) apiError(403, "Нужна сессия.");
 
   if (actor.role === "doctor" || actor.role === "admin") {
-    await loadEmployee(adm, actor, gate);
-    const { data, error } = await adm
-      .from("appointments")
-      .select("*")
+    const employee = await loadEmployee(adm, actor, gate);
+    const clinicId = safeDentalScalarId(employee.clinic_id, "clinic");
+    let query = adm.from("appointments").select("*").eq("clinic_id", clinicId);
+    if (actor.role === "doctor") query = query.eq("doctor_id", actor.id);
+    const { data, error } = await query
       .order("appointment_date", { ascending: true })
       .order("appointment_time", { ascending: true });
     if (error) throw error;
@@ -44,6 +37,7 @@ export async function listAppointments(ctx: DentalServiceContext) {
     .from("appointments")
     .select("*")
     .eq("client_id", cid)
+    .eq("clinic_id", safeDentalScalarId(c.clinic_id, "clinic"))
     .order("appointment_date", { ascending: true })
     .order("appointment_time", { ascending: true });
   if (error) throw error;
@@ -213,6 +207,11 @@ export async function insertAppointment(
   });
 
   const doctorNameTrim = doctorNameRaw.trim() || "Врач";
+  const clinicIdForBooking = safeDentalScalarId(clientRow.clinic_id, "clinic");
+  const { data: doctor, error: doctorError } = await ctx.adm.from("dental_employees")
+    .select("id").eq("clinic_id", clinicIdForBooking).eq("role", "doctor")
+    .eq("name", doctorNameTrim).maybeSingle();
+  if (doctorError) throw doctorError;
   const dateIso = isoDateLocal(year, monthNum, day);
 
   await assertSlotAvailable(ctx.adm, {
@@ -229,6 +228,7 @@ export async function insertAppointment(
     const { data: svc } = await ctx.adm
       .from("services")
       .select("id")
+      .eq("clinic_id", clinicIdForBooking)
       .eq("name", serviceTitle)
       .maybeSingle();
     serviceId = (svc as { id?: string } | null)?.id ?? null;
@@ -237,6 +237,8 @@ export async function insertAppointment(
   // Колонки, гарантированно существующие в каноничной схеме (001/005/010/011).
   const baseRow: Record<string, unknown> = {
     client_id: clientId,
+    clinic_id: clinicIdForBooking,
+    ...(doctor?.id ? { doctor_id: doctor.id } : {}),
     doctor_name: doctorNameTrim,
     appointment_date: dateIso,
     appointment_time: timeSlot,
@@ -363,6 +365,9 @@ export async function rescheduleAppointment(
       appointment_time: slot,
       status: "scheduled",
       confirmed_at: null,
+      confirmation_tg_message_id: null,
+      reminder_24h_sent_at: null,
+      reminder_2h_sent_at: null,
     })
     .eq("id", id);
   if (error) throw error;

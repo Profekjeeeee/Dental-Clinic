@@ -1,4 +1,5 @@
 import "server-only";
+import { parseClinicAppointmentTime } from "@/lib/server/clinicAppointmentTime";
 
 import {
   RU_MONTHS_GENITIVE,
@@ -43,10 +44,6 @@ interface EmployeeRow {
   last_name: string | null;
 }
 
-function clinicTzOffset(): string {
-  return process.env.CLINIC_TZ_OFFSET?.trim() || "+03:00";
-}
-
 export function escapeHtmlTg(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -61,8 +58,7 @@ export function formatDateRuFromIso(dateIso: string): string {
 }
 
 export function parseAppointmentDateTime(dateIso: string, time: string): Date {
-  const normalizedTime = time.length === 5 ? `${time}:00` : time;
-  return new Date(`${dateIso}T${normalizedTime}${clinicTzOffset()}`);
+  return parseClinicAppointmentTime(dateIso, time);
 }
 
 function hoursUntilAppointment(dateIso: string, time: string, now = new Date()): number {
