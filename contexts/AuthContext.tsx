@@ -100,7 +100,7 @@ function PinOverlay({
         <PinScreen
           mode="create"
           title="Создайте PIN"
-          subtitle="4–6 цифр для защиты входа"
+          subtitle="4 цифры для защиты входа"
           loading={auth.pinBusy}
           errorMessage={auth.pinError}
           onCancel={auth.cancelPinFlow}
