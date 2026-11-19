@@ -42,7 +42,7 @@ export async function updateClientFormulaTeeth(
     .update({ formula_teeth: jsonPayload } as never)
     .eq("id", cid);
   const m = String(uErr?.message ?? "");
-  if (uErr?.code === "42703" || m.includes("formula_teeth")) {
+  if ((uErr?.code === "42703" || uErr?.code === "PGRST204") && m.includes("formula_teeth")) {
     return { ok: true as const, schemaMissing: true as const };
   }
   if (uErr) throw uErr;
@@ -63,7 +63,7 @@ export async function updateClientInternalNotes(
     .eq("id", cid);
 
   const m = String(uErr?.message ?? "");
-  if (uErr?.code === "42703" || m.includes("internal_notes")) {
+  if ((uErr?.code === "42703" || uErr?.code === "PGRST204") && m.includes("internal_notes")) {
     return { ok: true as const, schemaMissing: true as const };
   }
   if (uErr) throw uErr;
